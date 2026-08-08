@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The test APK needs networking to serve the local image server and
+         exercise the app's urllib path. The host app itself declares no
+         permissions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

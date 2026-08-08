@@ -1,0 +1,54 @@
+<!--
+  Vyne host manifest.  Gradle placeholders ${vyneAppLabel} and
+  ${vyneAppModule} are replaced by the build system from -Pvyne.* properties.
+
+  The meta-data entry tells MainActivity which Python module to import
+  (defaults to "app" if not specified in the generated vyne.toml).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Demo-owned declarations for the second_surface extension (examples
+      of what a user app adds for system-window surfaces): SMS trigger,
+      overlay permission, and the lock-screen prompt Activity.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application
+        android:name="com.chaquo.python.android.PyApplication"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="${vyneAppLabel}"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <meta-data
+            android:name="dev.vyne.MODULE_NAME"
+            android:value="${vyneAppModule}" />
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="dev.vyne.ext.second_surface.PromptActivity"
+            android:configChanges="orientation|screenSize"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+        <receiver
+            android:name="dev.vyne.ext.second_surface.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

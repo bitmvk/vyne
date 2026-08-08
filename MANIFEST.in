@@ -1,0 +1,14 @@
+include android/gradlew
+include android/gradlew.bat
+include android/settings.gradle.kts
+include android/build.gradle.kts
+include android/gradle.properties
+recursive-include android/gradle/wrapper *
+recursive-include android/host/src *
+prune .gradle
+prune android/.gradle
+prune .venv
+prune build
+prune dist
+prune android/host/build
+global-exclude __pycache__ *.py[cod]

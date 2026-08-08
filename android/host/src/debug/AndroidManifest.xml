@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug builds need networking for the emulator acceptance suite
+         (local image server + the app's urllib path). Release builds ship
+         permission-free; the app declares its own permissions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

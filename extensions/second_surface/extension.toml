@@ -1,0 +1,11 @@
+# second_surface — demonstrates a second live Renderer outside the Activity.
+#
+# Two attach points are demonstrated with the SAME portable Renderer
+# machinery (RenderSurface):
+#   1. "sms_overlay"   — WindowManager overlay, triggered by an SMS
+#      broadcast (works with the app closed; the process cold-starts from
+#      the receiver, no Activity ever exists).
+#   2. "lock_prompt"   — a dedicated showWhenLocked Activity (fullscreen
+#      UI over the keyguard; the phone is never unlocked and the main app
+#      is never opened).
+android_register = "dev.vyne.ext.second_surface.SecondSurfaceExtension"

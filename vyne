@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$ROOT_DIR/packages/vyne/src${PYTHONPATH:+:$PYTHONPATH}"
+export VYNE_FRAMEWORK_ROOT="${VYNE_FRAMEWORK_ROOT:-$ROOT_DIR}"
+
+exec python3 -m vyne.cli.main "$@"

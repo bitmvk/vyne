@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import unittest
+
+from vyne import (
+    AnimatedValue,
+    Box,
+    Canvas,
+    Column,
+    CornerRadius,
+    Decoration,
+    Fill,
+    Path,
+    Ripple,
+    Scroll,
+    Shadow,
+    Stroke,
+    Style,
+    Text,
+)
+from vyne.elements import event_name_for_prop, normalize_child
+
+
+class ElementTests(unittest.TestCase):
+    def test_animated_value_encodes_a_generic_parameterized_spring(self):
+        value = AnimatedValue(
+            24,
+            duration=400,
+            easing="spring",
+            damping_ratio=0.6,
+            stiffness=800,
+        )
+
+        self.assertEqual(
+            value.to_protocol_value(),
+            {
+                "__vyne_animated_value__": True,
+                "value": 24.0,
+                "duration": 400,
+                "easing": "spring",
+                "retarget": "maintain_velocity",
+                "damping_ratio": 0.6,
+                "stiffness": 800.0,
+            },
+        )
+
+    def test_animated_value_arithmetic_lowers_inside_canvas_draw(self):
+        position = AnimatedValue(0.25, duration=48, easing="linear")
+        canvas = Canvas(
+            draw=[
+                {
+                    "kind": "circle",
+                    "cx": 10 + position * 200,
+                    "cy": 20,
+                    "r": (position * 40).clamp(4, 12),
+                }
+            ]
+        )
+
+        circle = canvas.props["draw"][0]
+        self.assertEqual(
+            circle["cx"],
+            {
+                "__vyne_animated_value__": True,
+                "value": 60.0,
+                "duration": 48,
+                "easing": "linear",
+                "retarget": "restart",
+            },
+        )
+        self.assertEqual(circle["r"]["value"], 10.0)
+
+    def test_nested_children_and_scalars_are_normalized(self):
+        element = Box("hello", [None, 2, (True, Text(text="nested"))])
+
+        self.assertEqual([child.kind for child in element.children], [
+            "Text",
+            "Text",
+            "Text",
+            "Text",
+        ])
+        self.assertEqual(
+            [child.props.get("text") for child in element.children],
+            ["hello", "2", "True", "nested"],
+        )
+
+    def test_normalize_child_rejects_arbitrary_objects(self):
+        with self.assertRaisesRegex(TypeError, "Cannot render child"):
+            normalize_child(object())
+
+    def test_scroll_only_wraps_multiple_children(self):
+        single = Scroll(Text(text="one"))
+        multiple = Scroll(Text(text="one"), Text(text="two"))
+
+        self.assertEqual([child.kind for child in single.children], ["Text"])
+        self.assertEqual([child.kind for child in multiple.children], ["Layout"])
+        self.assertEqual(
+            [child.props["text"] for child in multiple.children[0].children],
+            ["one", "two"],
+        )
+
+    def test_style_is_normalized_to_nested_json_props(self):
+        style = Style(
+            text_color="#111111",
+            decoration=Decoration(
+                shape=None,
+                shadow=Shadow(elevation=4, translation_z=1.5),
+                ripple=Ripple(color="#ffffff", bounded=False),
+                clip=True,
+            ),
+        )
+        element = Text(text="styled", style=style)
+
+        self.assertEqual(
+            element.props["style"],
+            {
+                "text_color": "#111111",
+                "decoration": {
+                    "shadow": {"elevation": 4, "translation_z": 1.5},
+                    "ripple": {"color": "#ffffff", "bounded": False},
+                    "clip": True,
+                },
+            },
+        )
+
+    def test_path_and_canvas_lower_path_strings(self):
+        path = Path(d="M0 0 L1 2")
+        canvas = Canvas(draw=[{"kind": "path", "d": "M0 0 L3 4"}])
+
+        self.assertNotIn("d", path.props)
+        # After deep freeze (MODEL-03), path commands are FrozenMaps with tuple values.
+        last_cmd = path.props["commands"][-1]
+        self.assertEqual(dict(last_cmd), {"cmd": "L", "values": (1.0, 2.0)})
+        self.assertNotIn("d", canvas.props["draw"][0])
+        self.assertEqual(canvas.props["draw"][0]["commands"][0]["cmd"], "M")
+
+    def test_canvas_validates_display_list_shape(self):
+        with self.assertRaisesRegex(TypeError, "draw must be a list"):
+            Canvas(draw={})
+        with self.assertRaisesRegex(TypeError, "operations must be dictionaries"):
+            Canvas(draw=["not an operation"])
+
+    def test_event_props_map_to_protocol_event_names(self):
+        self.assertEqual(event_name_for_prop("on_click"), "click")
+        self.assertEqual(event_name_for_prop("on_pointer_down"), "pointer_down")
+        self.assertEqual(event_name_for_prop("on_pointer_move"), "pointer_move")
+        self.assertEqual(event_name_for_prop("on_pointer_up"), "pointer_up")
+        self.assertEqual(event_name_for_prop("on_pointer_cancel"), "pointer_cancel")
+        self.assertEqual(event_name_for_prop("on_text_change"), "text_change")
+        self.assertIsNone(event_name_for_prop("text"))
+
+    def test_decoration_helpers_build_expected_shapes(self):
+        decoration = Decoration.rectangle(
+            fill=Fill.solid("#abcdef"),
+            stroke=Stroke("#123456", width=2, dash_width=3, dash_gap=4),
+            corners=CornerRadius.only(top_left=8, bottom_right=2),
+        )
+
+        props = decoration.to_props()
+        self.assertEqual(props["shape"]["kind"], "rectangle")
+        self.assertEqual(props["shape"]["fill"], {"kind": "solid", "color": "#abcdef"})
+        self.assertEqual(props["shape"]["stroke"]["dash_gap"], 4)
+        self.assertEqual(props["shape"]["corners"]["top_left"], 8)
+
+
+if __name__ == "__main__":
+    unittest.main()
