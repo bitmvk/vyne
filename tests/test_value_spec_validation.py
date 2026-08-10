@@ -2,7 +2,7 @@
 
 The ValueSpec contract guards every prop crossing the wire: types,
 ranges, enums, colors, dimensions, dash arrays, collection shapes,
-and the animated-value marker pass-through.
+and the animated-node marker pass-through.
 """
 
 from __future__ import annotations
@@ -144,7 +144,7 @@ class CollectionShapeTests(unittest.TestCase):
 
 
 class AnimatedMarkerTests(unittest.TestCase):
-    MARKER = "__vyne_animated_value__"
+    MARKER = "__vyne_animated_node__"
 
     def test_marker_validates_inner_value(self):
         spec = ValueSpec(min_value=0, max_value=1)

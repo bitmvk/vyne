@@ -1,10 +1,10 @@
 /** Generated Vyne element property contracts.
- * DO NOT EDIT. Generated from vyne.spec.schema_v2 (hash=338ff59e1b68db60).
+ * DO NOT EDIT. Generated from vyne.spec.schema_v2 (hash=86b05b5bbcd0386d).
  */
 package dev.vyne.generated
 
 object ElementContracts {
-    const val SCHEMA_HASH = "338ff59e1b68db60"
+    const val SCHEMA_HASH = "86b05b5bbcd0386d"
 
     val KINDS: Set<String> = setOf(
         "Box",

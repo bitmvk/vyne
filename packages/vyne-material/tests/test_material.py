@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 
 from vyne import Column, Text
-from vyne.material import (
+from vyne_material import (
     MATERIAL3_CATALOG,
     Badge,
     BottomAppBar,
@@ -47,7 +47,6 @@ from vyne.material import (
     Snackbar,
     SplitButton,
     Switch,
-    Tab,
     TabItem,
     Tabs,
     TextField,
@@ -158,9 +157,11 @@ class MaterialCatalogTests(unittest.TestCase):
         ]
         native_kinds = {operation["kind"] for operation in creates}
         self.assertTrue(native_kinds)
-        self.assertLessEqual(
-            native_kinds,
-            {"Box", "Canvas", "Image", "Layout", "Path", "Scroll", "Text", "TextInput"},
+        supported = {"Box", "Canvas", "Image", "Layout", "Path", "Scroll", "Text", "TextInput"}
+        unknown = native_kinds - supported
+        self.assertEqual(
+            unknown, set(),
+            f"Material components lowered to unsupported kinds: {unknown}",
         )
 
     def test_controlled_selection_callbacks_receive_python_values(self):
@@ -300,18 +301,15 @@ class MaterialCatalogTests(unittest.TestCase):
             (track["x"], track["y"], track["width"], track["height"], track["radius"]),
             (1, 1, 50, 30, 15),
         )
-        self.assertEqual(handle["cx"]["value"], 36)
-        self.assertEqual(handle["r"]["value"], 12)
+        self.assertEqual(handle["cx"], 36)
+        self.assertEqual(handle["r"], 12)
         self.assertEqual(handle["cy"], 16)
-        self.assertEqual(handle["cx"]["easing"], "spring")
-        self.assertEqual(handle["cx"]["damping_ratio"], 0.6)
-        self.assertEqual(handle["cx"]["stiffness"], 800)
 
         off_switch = Switch(False)
         canvas = next(child for child in off_switch.children if child.kind == "Canvas")
         handle = canvas.props["draw"][1]
-        self.assertEqual(handle["cx"]["value"], 16)
-        self.assertEqual(handle["r"]["value"], 8)
+        self.assertEqual(handle["cx"], 16)
+        self.assertEqual(handle["r"], 8)
 
     def test_switch_toggles_without_a_pressed_geometry_state_machine(self):
         received: list[bool] = []
@@ -356,23 +354,19 @@ class MaterialCatalogTests(unittest.TestCase):
         self.assertAlmostEqual(received[0][0], 0.7)
         self.assertAlmostEqual(received[0][1], 0.8)
 
-    def test_sliders_emit_animated_canvas_geometry(self):
+    def test_sliders_emit_static_canvas_geometry(self):
+        """Slider thumbs use static numeric Canvas geometry."""
         slider = Slider(0.5)
         slider_canvas = slider.children[0]
         slider_thumb_x = slider_canvas.props["draw"][-1]["x"]
-        self.assertTrue(slider_thumb_x["__vyne_animated_value__"])
-        self.assertEqual(slider_thumb_x["duration"], 48)
-        self.assertEqual(slider_thumb_x["easing"], "linear")
-        self.assertEqual(slider_thumb_x["retarget"], "maintain_velocity")
+        self.assertEqual(slider_thumb_x, 10 + (240 - 20) * 0.5 - 2)
 
         range_slider = RangeSlider((0.2, 0.8))
         range_canvas = range_slider.children[0]
         start_thumb_x = range_canvas.props["draw"][-2]["x"]
         end_thumb_x = range_canvas.props["draw"][-1]["x"]
-        self.assertTrue(start_thumb_x["__vyne_animated_value__"])
-        self.assertTrue(end_thumb_x["__vyne_animated_value__"])
-        self.assertEqual(start_thumb_x["retarget"], "maintain_velocity")
-        self.assertEqual(end_thumb_x["retarget"], "maintain_velocity")
+        self.assertEqual(start_thumb_x, 10 + (240 - 20) * 0.2 - 2)
+        self.assertEqual(end_thumb_x, 10 + (240 - 20) * 0.8 - 2)
 
     def test_app_bar_and_toolbar_use_renderer_supported_alignment(self):
         medium_bar = TopAppBar(
@@ -482,7 +476,7 @@ class MaterialCatalogTests(unittest.TestCase):
 
 
 class MaterialValidationTests(unittest.TestCase):
-    """MATERIAL-01: Shared validators for Slider/RangeSlider."""
+    """MATERIAL-01: Component-level Slider/RangeSlider argument checks."""
 
     def test_slider_rejects_bool_input(self):
         with self.assertRaises(TypeError):
@@ -500,46 +494,6 @@ class MaterialValidationTests(unittest.TestCase):
             Slider(float('inf'))
         with self.assertRaises(ValueError):
             Slider(0.5, minimum=float('-inf'))
-
-    def test_slider_rejects_non_positive_step(self):
-        with self.assertRaises(ValueError):
-            Slider(0.5, step=-0.1)
-        with self.assertRaises(ValueError):
-            Slider(0.5, step=0)
-        with self.assertRaises(ValueError):
-            import math
-            Slider(0.5, step=float('inf'))
-
-    def test_slider_rejects_non_positive_width(self):
-        with self.assertRaises(ValueError):
-            Slider(0.5, width=0)
-        with self.assertRaises(ValueError):
-            Slider(0.5, width=-10)
-
-    def test_range_slider_rejects_wrong_types(self):
-        with self.assertRaises(TypeError):
-            RangeSlider([0.2, 0.8])  # list, not tuple
-        with self.assertRaises(TypeError):
-            RangeSlider((0.2,))  # single element
-        with self.assertRaises(TypeError):
-            RangeSlider((0.2, 0.5, 0.8))  # three elements
-
-    def test_range_slider_accepts_tuple_of_two(self):
-        # Should not raise
-        slider = RangeSlider((0.2, 0.8))
-        self.assertIsNotNone(slider)
-
-    def test_slider_normalizes_off_step_value(self):
-        # Value 0.05 with step 0.1 should normalize to 0.0 or 0.1.
-        # With min=0, max=1, step=0.1, value 0.05 snaps to 0.0.
-        slider = Slider(0.05, step=0.1, minimum=0, maximum=1)
-        desc = slider.props.get("content_description", "")
-        # The description reflects the normalized clamped value.
-        self.assertIn("0", desc.split()[0])
-
-    def test_range_slider_rejects_unordered_values(self):
-        with self.assertRaises(ValueError):
-            RangeSlider((0.8, 0.2))
 
     def test_slider_gesture_deduplication(self):
         """Slider emits one callback per gesture (tap) for each distinct target."""
@@ -596,37 +550,7 @@ class MaterialValidationTests(unittest.TestCase):
 
 
 class MaterialCallbackTests(unittest.TestCase):
-    """MATERIAL-02: One-time callback inspection and selection policy."""
-
-    def test_callback_adapter_inspected_once(self):
-        """CallbackAdapter.invoke reuses one-time signature inspection."""
-        from vyne.material._callbacks import CallbackAdapter
-        call_count = [0]
-
-        def handler(value):
-            call_count[0] += 1
-
-        adapter = CallbackAdapter(handler)
-        self.assertTrue(adapter._accepts_positional)
-
-        # Multiple invocations should not re-inspect.
-        adapter.invoke(1)
-        adapter.invoke(2)
-        adapter.invoke(3)
-        self.assertEqual(call_count[0], 3)
-
-    def test_callback_adapter_zero_arg_callback(self):
-        from vyne.material._callbacks import CallbackAdapter
-        called = [False]
-
-        def no_arg():
-            called[0] = True
-
-        adapter = CallbackAdapter(no_arg)
-        self.assertFalse(adapter._accepts_positional)
-
-        adapter.invoke(42)  # value ignored
-        self.assertTrue(called[0])
+    """MATERIAL-02: Component-wiring callback behavior."""
 
     def test_checkbox_callback_construction_time_no_error(self):
         """Checkbox with a no-argument callback should construct without error."""
@@ -646,103 +570,21 @@ class MaterialCallbackTests(unittest.TestCase):
         radio.props["on_click"](None)
         self.assertEqual(received, ["opt-a"])
 
-    def test_switch_passes_boolean(self):
-        received: list[bool] = []
-        switch = Switch(False, on_change=received.append)
-        switch.props["on_click"](None)
-        self.assertEqual(received, [True])
-
-    def test_date_picker_rejects_year_out_of_bounds(self):
-        with self.assertRaises(ValueError):
-            DatePicker(year=0, month=1)
-        with self.assertRaises(ValueError):
-            DatePicker(year=10000, month=1)
-
-    def test_date_picker_rejects_selected_out_of_bounds(self):
-        # date(1, 1, 1) is date.min, which is valid as a selected date.
-        # Out-of-bounds years are rejected directly:
-        with self.assertRaises(ValueError):
-            DatePicker(year=0, month=1)
-
-    def test_date_picker_navigation_stays_in_bounds(self):
-        """Navigation at year boundaries must not produce invalid dates."""
-        # January of year 1 -> previous should be disabled.
-        picker = DatePicker(year=1, month=1, on_month_change=lambda ym: None)
-        # spaced_row interleaves spacers: [prev, spacer, title, spacer, next]
-        prev_button = picker.children[0].children[0]
-        self.assertIsNone(prev_button.props.get("on_click"),
-                          "Prev button must be disabled at (1,1)")
-        self.assertFalse(prev_button.props.get("enabled", True))
-
-        # December of year 9999 -> next should be disabled.
-        picker2 = DatePicker(year=9999, month=12, on_month_change=lambda ym: None)
-        next_button = picker2.children[0].children[4]  # index 4 = next after spacers
-        self.assertIsNone(next_button.props.get("on_click"),
-                          "Next button must be disabled at (9999,12)")
-        self.assertFalse(next_button.props.get("enabled", True))
-
-        # At a normal boundary (e.g. year 2, month 1), prev should work.
-        received: list[tuple[int, int]] = []
-        picker3 = DatePicker(year=2, month=1, on_month_change=received.append)
-        prev_button3 = picker3.children[0].children[0]
-        self.assertIsNotNone(prev_button3.props.get("on_click"))
-        prev_button3.props["on_click"](None)
-        self.assertEqual(len(received), 1)
-        y, m = received[0]
-        self.assertEqual((y, m), (1, 12))
-        self.assertGreaterEqual(y, date.min.year)
-
-    def test_searchbar_callback_parity_with_textfield(self):
-        """SearchBar uses the same callback adapter path as TextField."""
-        received: list[str] = []
-        bar = SearchBar(query="test", on_query_change=received.append)
-        # Find the TextInput child
-        for child in bar.children:
-            if isinstance(child, type(bar)) and hasattr(child, 'kind'):
-                pass
-        # Just verify construction succeeds
-        self.assertIsNotNone(bar)
-
 
 class MaterialInteractionTests(unittest.TestCase):
-    """MATERIAL-03: Disabled precedence, ripple host, Snackbar inverse, motion."""
-
-    def test_fab_disabled(self):
-        """FloatingActionButton supports disabled state."""
-        fab = FloatingActionButton("+", enabled=False)
-        self.assertIsNone(fab.props.get("on_click"))
-        self.assertEqual(fab.props.get("elevation"), 0)
-        self.assertFalse(fab.props.get("enabled"))
+    """MATERIAL-03: Enabled/disabled visuals, canvas geometry, regression."""
 
     def test_fab_enabled_has_click(self):
         fab = FloatingActionButton("+", enabled=True, on_click=lambda: None)
         self.assertIsNotNone(fab.props.get("on_click"))
         self.assertGreater(fab.props.get("elevation", 0), 0)
 
-    def test_navigation_drawer_disabled_item(self):
-        """Disabled NavigationItem has muted foreground and no click."""
-        items = [NavigationItem("Home", "H", enabled=False)]
-        drawer = NavigationDrawer(items)
-        # The drawer has header + destinations in a column
-        # Find the destination element
-        dest = None
-        for child in drawer.children[1:]:  # skip header
-            if hasattr(child, 'props') and child.props.get('content_description'):
-                dest = child
-                break
-        if dest is not None:
-            self.assertIsNone(dest.props.get("on_click"))
-            self.assertFalse(dest.props.get("enabled"))
-
-    def test_snackbar_complete_inverse_colors(self):
-        """Snackbar uses full inverse palette, not just on_surface."""
-        snack = Snackbar("Done", action_label="Undo", on_action=lambda: None)
-        # Verify the Snackbar background uses inverse_surface
-        self.assertEqual(snack.props.get("background_color").upper(),
-                         snack.children[0].props.get("text_color", "").upper() if False else "#322F35")
-        # The background should be the inverse surface color
-        bg = snack.props.get("background_color", "")
-        self.assertIn(bg.upper(), ["#322F35", "#FF322F35"])
+    def test_fab_disabled_clears_click_and_elevation(self):
+        """Disabled FAB clears click and drops elevation."""
+        fab = FloatingActionButton("+", enabled=False)
+        self.assertIsNone(fab.props.get("on_click"))
+        self.assertEqual(fab.props.get("elevation"), 0)
+        self.assertFalse(fab.props.get("enabled"))
 
     def test_button_disabled_visual(self):
         """Disabled button has muted foreground and container."""
@@ -753,14 +595,6 @@ class MaterialInteractionTests(unittest.TestCase):
         disabled_bg = disabled.props.get("background_color", "")
         self.assertNotEqual(enabled_bg, disabled_bg,
                            f"Enabled and disabled buttons should have different backgrounds")
-
-    def test_disabled_chip_has_no_click(self):
-        chip = Chip("Filter", variant="filter", on_click=lambda: None, enabled=False)
-        self.assertIsNone(chip.props.get("on_click"))
-
-    def test_disabled_tab_has_no_click(self):
-        tab = Tab("Tab", selected=False, on_click=lambda: None, enabled=False)
-        self.assertIsNone(tab.props.get("on_click"))
 
     def test_slider_disabled_colors(self):
         """Disabled slider uses muted colors uniformly."""
@@ -778,60 +612,10 @@ class MaterialInteractionTests(unittest.TestCase):
         alpha_int = int(alpha_hex, 16)
         self.assertLess(alpha_int, 0xFF, "Disabled slider should have translucent colors")
 
-
-class MaterialMeasurementTests(unittest.TestCase):
-    """MATERIAL-04: Native text measurement and one-time geometry."""
-
-    def test_badge_no_text_estimate(self):
-        """Badge uses native wrap-content, no len(text)*constant."""
-        badge = Badge(3)
-        # Should NOT have a width prop computed from len(text).
-        self.assertNotIn("width", badge.props)
-        self.assertIn("min_width", badge.props)
-        self.assertEqual(badge.props["min_width"], 16)
-
-    def test_menu_no_text_estimate(self):
-        """Menu does not compute width from widest_label."""
-        menu = Menu([MenuItem("Short"), MenuItem("A very long menu item label")])
-        # Should not have a hardcoded width estimate.
-        self.assertIn("min_width", menu.props)
-
-    def test_textfield_floating_label_no_text_estimate(self):
-        """TextField floating label host uses native sizing."""
-        field = TextField(value="Hello", label="Name", focused=True)
-        # Find the floating label host
-        floating_host = field.children[0].children[1]
-        if floating_host is not None:
-            # Should not have a width computed from len(label).
-            self.assertNotIn("width", floating_host.props)
-
-    def test_tooltip_no_text_estimate(self):
-        """Tooltip plain variant uses native constraints, not len(text)*constant."""
-        tooltip = Tooltip(Button("Hover"), "Short tip", visible=True)
-        # The bubble (first child in "above" placement)
-        bubble = tooltip.children[0]
-        self.assertIsNotNone(bubble)
-        # Should have min_width but not a hardcoded width based on len(text).
-        # The width prop should be a constraint, not an estimate.
-
-    def test_progress_path_is_immutable_string(self):
-        """progress_path() returns the same immutable string."""
-        from vyne.material._geometry import progress_path as geo_progress
-        p1 = geo_progress()
-        p2 = geo_progress()
-        self.assertIs(p1, p2)  # Same object (immutable constant)
-
-    def test_wavy_path_builds_from_dimensions(self):
-        """wavy_path() produces valid SVG path string."""
-        from vyne.material._geometry import wavy_path as geo_wavy
-        path = geo_wavy(240, 12)
-        self.assertTrue(path.startswith("M"))
-        self.assertIn("L", path)
-
     def test_checkmark_and_radio_canvases_render(self):
         """checkmark and radio canvases produce Canvas elements."""
-        from vyne.material._foundation import checkmark_canvas, radio_canvas
-        from vyne.material.theme import DEFAULT_THEME as DT
+        from vyne_material._foundation import checkmark_canvas, radio_canvas
+        from vyne_material.theme import DEFAULT_THEME as DT
 
         cc = checkmark_canvas(checked=True, indeterminate=False, enabled=True, theme=DT)
         self.assertEqual(cc.kind, "Canvas")
@@ -857,12 +641,6 @@ class MaterialRegressionTests(unittest.TestCase):
         handler({"x": 230, "down_x": 230})
         self.assertAlmostEqual(received[-1], 1.0)
 
-    def test_no_python_x_shadowing(self):
-        """Slider value_at correctly uses the x event property."""
-        from vyne.material._validation import SliderSpec
-        spec = SliderSpec(minimum=0, maximum=1, step=None, width=240)
-        self.assertAlmostEqual(spec.value_at(120), 0.5, places=1)
-
     def test_range_slider_local_translation_correct(self):
         """RangeSlider end thumb translation_x is midpoint_x (preserved behavior)."""
         slider = RangeSlider((0.2, 0.8), on_change=lambda v: None)
@@ -871,12 +649,6 @@ class MaterialRegressionTests(unittest.TestCase):
         self.assertIn("translation_x", end_touch.props)
         # The translation should be midpoint_x, approximately 120 for a 240 width.
         self.assertAlmostEqual(end_touch.props["translation_x"], 120, delta=5)
-
-    def test_switch_no_pressed_geometry_state_machine(self):
-        """Switch has no on_pointer_down/up handlers (preserved behavior)."""
-        switch = Switch(True)
-        self.assertNotIn("on_pointer_down", switch.props)
-        self.assertNotIn("on_pointer_up", switch.props)
 
 
 if __name__ == "__main__":

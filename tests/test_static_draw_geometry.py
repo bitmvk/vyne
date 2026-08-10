@@ -95,33 +95,12 @@ class PathGeometryTests(unittest.TestCase):
 class CanvasGeometryTests(unittest.TestCase):
     """Canvas display-list geometry, view_box, trim, and dash validation."""
 
-    def test_view_box_four_numbers_accepted(self):
-        canon = lower_element(Canvas(
-            view_box=[0, 0, 100, 100],
-            draw=[{"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}]
-        ))
-        self.assertEqual(canon.props["view_box"], (0, 0, 100, 100))
-
     def test_view_box_none_accepted(self):
         canon = lower_element(Canvas(
             view_box=None,
             draw=[{"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}]
         ))
         self.assertIsNone(canon.props.get("view_box"))
-
-    def test_view_box_negative_width_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Canvas(
-                view_box=[0, 0, -10, 100],
-                draw=[{"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}]
-            ))
-
-    def test_view_box_zero_dimension_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Canvas(
-                view_box=[0, 0, 0, 0],
-                draw=[{"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}]
-            ))
 
     def test_rect_op_with_opacity_accepted(self):
         ops = [{"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10,
@@ -155,24 +134,6 @@ class CanvasGeometryTests(unittest.TestCase):
                 "trim_end": -0.1}]
         with self.assertRaises(ValueError):
             validate_canvas_draw_ops(ops)
-
-    def test_circle_with_valid_radius_accepted(self):
-        ops = [{"kind": "circle", "cx": 50, "cy": 50, "r": 30}]
-        validate_canvas_draw_ops(ops)
-
-    def test_round_rect_with_radius_accepted(self):
-        ops = [{"kind": "round_rect", "x": 10, "y": 10, "width": 80,
-                "height": 40, "radius": 8}]
-        validate_canvas_draw_ops(ops)
-
-
-# ---------------------------------------------------------------------------
-# Path dash array normalization
-# ---------------------------------------------------------------------------
-
-
-class PathDashArrayTests(unittest.TestCase):
-    """Dash array normalization from user-facing strings to canonical tuples."""
 
     def test_string_dash_parsed_to_tuple(self):
         """'4,8' string → (4.0, 8.0) tuple."""
@@ -233,6 +194,11 @@ class PathDashArrayTests(unittest.TestCase):
         """Whitespace around dash values is trimmed."""
         canon = lower_element(Path(d="M0,0 L10,10", stroke_dash_array=" 4 , 8 "))
         self.assertEqual(canon.props["stroke_dash_array"], (4.0, 8.0))
+
+    def test_non_numeric_dash_rejected(self):
+        """Non-numeric dash parts reject with a clear message."""
+        with self.assertRaisesRegex(ValueError, "comma-separated"):
+            lower_element(Path(d="M0,0 L10,10", stroke_dash_array="fast,slow"))
 
 
 if __name__ == "__main__":

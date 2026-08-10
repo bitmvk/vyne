@@ -12,8 +12,14 @@ vyne = "vyne.cli.main:main"
 [tool.uv]
 package = true
 
+[tool.uv.workspace]
+members = ["packages/vyne-material"]
+
 [tool.setuptools.packages.find]
 where = ["packages/vyne/src"]
+
+[tool.setuptools.package-data]
+vyne = ["py.typed", "*.pyi", "cli/templates/*"]
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -22,4 +28,9 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "mypy>=1.13",
+    "vyne-material",
 ]
+
+[tool.uv.sources]
+vyne-material = { workspace = true }

@@ -4,7 +4,6 @@ Proves that:
 - Python owns animation targets and policy.
 - Animation ops are emitted with correct fields.
 - Animation-only events don't trigger component re-execution.
-- AnimatedValue encoding is stable.
 - Canvas draw commands carry stable animation markers.
 - Multiple animations in one event produce ordered ops.
 
@@ -17,7 +16,7 @@ import unittest
 from typing import Any
 
 from vyne import (
-    AnimatedValue, Box, Canvas, Column, Layout, Path,
+    Box, Canvas, Column, Layout, Path,
     Row, Text, animate, component, state,
 )
 from vyne.runtime import Runtime
@@ -40,6 +39,19 @@ def _render_ops(commit: dict[str, Any]) -> list[dict]:
     ]
 
 
+def _click(runtime) -> None:
+    """Dispatch one click on the first click listener in the latest commit."""
+    listener = [
+        op for op in runtime.latest_commit["ops"]
+        if op.get("op") == "listen" and op.get("event") == "click"
+    ][0]
+    runtime.dispatch_event({
+        "type": "event", "seq": 1,
+        "target": listener["id"], "event": "click",
+        "handler": listener["handler"], "payload": {},
+    })
+
+
 class AnimationTraceTests(unittest.TestCase):
     """Test animation operation emission and ordering."""
 
@@ -54,18 +66,7 @@ class AnimationTraceTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
 
-        click_listener = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click_listener["id"],
-            "event": "click",
-            "handler": click_listener["handler"],
-            "payload": {},
-        })
+        _click(runtime)
 
         anim_ops = _animation_ops(runtime.latest_commit)
         self.assertEqual(len(anim_ops), 1)
@@ -88,16 +89,7 @@ class AnimationTraceTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
 
-        click = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click["id"], "event": "click",
-            "handler": click["handler"], "payload": {},
-        })
+        _click(runtime)
 
         anim_ops = _animation_ops(runtime.latest_commit)
         self.assertNotIn("from_value", anim_ops[0])
@@ -113,16 +105,7 @@ class AnimationTraceTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
 
-        click = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click["id"], "event": "click",
-            "handler": click["handler"], "payload": {},
-        })
+        _click(runtime)
 
         anim_ops = _animation_ops(runtime.latest_commit)
         self.assertEqual(anim_ops[0]["from_value"], 1.0)
@@ -141,16 +124,7 @@ class AnimationTraceTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
 
-        click = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click["id"], "event": "click",
-            "handler": click["handler"], "payload": {},
-        })
+        _click(runtime)
 
         anim_ops = _animation_ops(runtime.latest_commit)
         # Keyframes are one native timeline. Independent commands would
@@ -191,16 +165,7 @@ class AnimationTraceTests(unittest.TestCase):
                 target_id_cell.append(op["id"])
                 break
 
-        click = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click["id"], "event": "click",
-            "handler": click["handler"], "payload": {},
-        })
+        _click(runtime)
 
         anim_ops = _animation_ops(runtime.latest_commit)
         self.assertEqual(len(anim_ops), 2,
@@ -259,11 +224,7 @@ class AnimationTraceTests(unittest.TestCase):
         handler_id = click["handler"]
 
         # Dispatch first click (triggers animation)
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": target_id, "event": "click",
-            "handler": handler_id, "payload": {},
-        })
+        _click(runtime)
 
         # After animation commit: listener must still be installed
         second_commit = runtime.latest_commit
@@ -287,130 +248,6 @@ class AnimationTraceTests(unittest.TestCase):
             "Second click must still produce animation ops after animation-only commit")
 
     # ----------------------------------------------------------------
-    # AnimatedValue in Canvas
-    # ----------------------------------------------------------------
-
-    def test_animated_value_in_canvas_draw(self):
-        """AnimatedValue used in Canvas draw operations."""
-        pos = AnimatedValue(0.5, duration=48, easing="linear")
-        app = lambda: Canvas(
-            draw=[{
-                "kind": "circle",
-                "cx": 10 + pos * 100,
-                "cy": 20,
-                "r": 5,
-            }],
-            view_box=[0, 0, 100, 100],
-        )
-
-        transport = MemoryTransport()
-        runtime = Runtime(app, transport=transport)
-        runtime.mount()
-
-        canvas_id = next(
-            op["id"] for op in runtime.latest_commit["ops"]
-            if op.get("op") == "create" and op.get("kind") == "Canvas"
-        )
-        props = None
-        for op in runtime.latest_commit["ops"]:
-            if op.get("op") == "set_props" and op.get("id") == canvas_id:
-                props = op.get("props", {})
-                break
-
-        self.assertIsNotNone(props)
-        draw = props.get("draw", [])
-        self.assertTrue(len(draw) > 0)
-        circle = draw[0]
-
-        # cx should be encoded as AnimatedValue marker (now frozen to FrozenMap)
-        from collections.abc import Mapping
-        self.assertRegex(circle["_vyne_op_id"], r"^circle_[0-9a-f]{12}_0$")
-        self.assertIsInstance(circle["cx"], Mapping)
-        self.assertTrue(circle["cx"].get("__vyne_animated_value__"))
-
-    def test_canvas_slot_identity_ignores_changing_animation_target(self):
-        def operation(target):
-            runtime = Runtime(
-                lambda: Canvas(
-                    draw=[{
-                        "kind": "circle",
-                        "cx": AnimatedValue(target, duration=80),
-                        "cy": 20,
-                        "r": 5,
-                    }],
-                ),
-                transport=MemoryTransport(),
-            )
-            runtime.mount()
-            props = next(
-                op["props"]
-                for op in runtime.latest_commit["ops"]
-                if op.get("op") == "set_props" and "draw" in op["props"]
-            )
-            return props["draw"][0]
-
-        first = operation(10)
-        second = operation(30)
-        self.assertEqual(first["_vyne_op_id"], second["_vyne_op_id"])
-        self.assertNotEqual(first["cx"]["value"], second["cx"]["value"])
-
-    def test_animated_value_clamp(self):
-        """AnimatedValue.clamp produces valid range."""
-        val = AnimatedValue(0.75, duration=48)
-        clamped = val.clamp(0.25, 0.5)
-        self.assertEqual(clamped.value, 0.5)
-        self.assertEqual(clamped.duration, 48)
-
-        below = val.clamp(minimum=1.0)
-        self.assertEqual(below.value, 1.0)
-
-        above = val.clamp(maximum=0.1)
-        self.assertEqual(above.value, 0.1)
-
-    def test_animated_value_spring(self):
-        """AnimatedValue with spring easing."""
-        spring = AnimatedValue(
-            24, duration=400, easing="spring",
-            damping_ratio=0.6, stiffness=800,
-        )
-        payload = spring.to_protocol_value()
-        self.assertEqual(payload["easing"], "spring")
-        self.assertEqual(payload["damping_ratio"], 0.6)
-        self.assertEqual(payload["stiffness"], 800.0)
-
-    def test_animated_value_rejects_invalid_spring_params(self):
-        """Invalid spring parameters are rejected."""
-        with self.assertRaises(ValueError):
-            AnimatedValue(1.0, easing="spring", damping_ratio=0)
-
-        with self.assertRaises(ValueError):
-            AnimatedValue(1.0, easing="spring", stiffness=-1)
-
-    def test_animated_value_arithmetic(self):
-        """AnimatedValue arithmetic works correctly."""
-        a = AnimatedValue(10, duration=100, easing="linear")
-        b = a + 5
-        self.assertEqual(b.value, 15)
-        self.assertEqual(b.duration, 100)
-
-        c = a * 2
-        self.assertEqual(c.value, 20)
-
-        d = a / 2
-        self.assertEqual(d.value, 5)
-
-        e = -a
-        self.assertEqual(e.value, -10)
-
-    def test_animated_value_rejects_motion_mismatch(self):
-        """Arithmetic between AnimatedValues with different settings fails."""
-        a = AnimatedValue(1, duration=100, easing="linear")
-        b = AnimatedValue(2, duration=200, easing="ease_out")
-
-        with self.assertRaises(ValueError):
-            a + b
-
-    # ----------------------------------------------------------------
     # Easing validation
     # ----------------------------------------------------------------
 
@@ -426,16 +263,7 @@ class AnimationTraceTests(unittest.TestCase):
 
             runtime = Runtime(app, transport=MemoryTransport())
             runtime.mount()
-            click = [
-                op for op in runtime.latest_commit["ops"]
-                if op.get("op") == "listen" and op.get("event") == "click"
-            ][0]
-
-            runtime.dispatch_event({
-                "type": "event", "seq": 1,
-                "target": click["id"], "event": "click",
-                "handler": click["handler"], "payload": {},
-            })
+            _click(runtime)
 
             anim_ops = _animation_ops(runtime.latest_commit)
             self.assertEqual(anim_ops[0]["easing"], easing)
@@ -450,16 +278,7 @@ class AnimationTraceTests(unittest.TestCase):
 
         runtime = Runtime(app, transport=MemoryTransport())
         runtime.mount()
-        click = [
-            op for op in runtime.latest_commit["ops"]
-            if op.get("op") == "listen" and op.get("event") == "click"
-        ][0]
-
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click["id"], "event": "click",
-            "handler": click["handler"], "payload": {},
-        })
+        _click(runtime)
 
         # The invalid animation is rejected before a native command is sent,
         # while the last accepted UI remains intact.

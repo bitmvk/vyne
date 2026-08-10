@@ -11,15 +11,14 @@ integration engine, shared by View properties and Canvas operations.
 There is **zero Python involvement during frames**. An accepted animation
 continues while Python is awaiting or temporarily busy.
 
-## The three APIs
+## The two APIs
 
 | API | use case |
 |---|---|
 | `animate(...)` | one-off property transitions, no declared state |
 | `Animated.Value` | persistent drivers, derived expressions, composed timelines |
-| `AnimatedValue(...)` | legacy target-driven values (compatibility) |
 
-All three lower to `MotionCommand` objects.
+Both lower to `MotionCommand` objects.
 
 ## Lifecycle
 
@@ -43,7 +42,7 @@ All three lower to `MotionCommand` objects.
   one-in-flight rule.
 - If a commit is rejected, its animations are rejected too
   (`framework_rollback`, `native_state_unknown`).
-- Declarative `AnimatedValue` first targets apply immediately on mount;
+- Declarative driver first targets apply immediately on mount;
   later targets animate from the live displayed value.
 
 ## Generation safety

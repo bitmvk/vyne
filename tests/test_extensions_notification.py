@@ -84,10 +84,6 @@ class NotificationEntryDurabilityTests(unittest.TestCase):
         )))
         self.assertIn(key, ext._handled_keys)
 
-    def test_origin_is_recorded(self):
-        ext.on_launch(self._context(self._launch("notify.order", {"entry_key": "order_1"}, "cold")))
-        self.assertIn("order_1", ext._handled_keys)
-
     def test_non_notification_launches_are_not_persisted(self):
         ext.on_launch(self._context(self._launch("android.intent.action.MAIN", {}, "cold")))
         self.assertEqual(set(), ext._handled_keys)

@@ -350,9 +350,52 @@ def unmount_surface(name: str, expected_host: Any = None) -> None:
 
 def dispatch_events_surface(name: str, events: Any) -> None:
     """Dispatch a Java list of native events to one surface runtime."""
-    session = _sessions.get(name)
+    _dispatch_events(name, events)
+
+
+def dispatch_event_surface(
+    name: str,
+    sequence: int,
+    target: int,
+    event_name: str,
+    handler: int,
+    payload: Any,
+) -> None:
+    """Dispatch the common single-event case for one surface runtime."""
+    _dispatch_event(name, sequence, target, event_name, handler, payload)
+
+
+def dispatch_apply_result_surface(
+    name: str,
+    result: str,
+    revision: int,
+    session_id: str,
+) -> None:
+    """Handle the receipt-only path for one surface runtime."""
+    _dispatch_apply_result(name, result, revision, session_id)
+
+
+def dispatch_external_callbacks_surface(name: str, tasks: Any) -> None:
+    """Decode queued Android extension work for one surface runtime."""
+    _dispatch_external_callbacks(name, tasks)
+
+
+def _session_for(name: str | None) -> _DirectSession:
+    """Resolve the live ingress session for *name* (None = main session).
+
+    Both ingress paths surface identical not-started errors so surface and
+    main behavior stay consistent.
+    """
+    session = _sessions.get(name) if name is not None else _session
     if session is None or session.runtime is None:
-        raise RuntimeError(f"Surface {name!r} is not started")
+        if name is not None:
+            raise RuntimeError(f"Surface {name!r} is not started")
+        raise RuntimeError("Python runtime is not started")
+    return session
+
+
+def _decode_native_events(events: Any) -> list[Event]:
+    """Decode a Java list of native events (shared by main and surfaces)."""
     decoded = []
     for index in range(int(events.size())):
         event = events.get(index)
@@ -365,56 +408,15 @@ def dispatch_events_surface(name: str, events: Any) -> None:
                 event.getPayload(),
             )
         )
-    _call_runtime_for(
-        session,
-        lambda: session.runtime.dispatch_native_events(decoded),
-        settle=True,
-    )
+    return decoded
 
 
-def dispatch_event_surface(
-    name: str,
-    sequence: int,
-    target: int,
-    event_name: str,
-    handler: int,
-    payload: Any,
-) -> None:
-    """Dispatch the common single-event case for one surface runtime."""
-    session = _sessions.get(name)
-    if session is None or session.runtime is None:
-        raise RuntimeError(f"Surface {name!r} is not started")
-    event = _native_event(sequence, target, event_name, handler, payload)
-    _call_runtime_for(
-        session,
-        lambda: session.runtime.dispatch_native_events([event]),
-        settle=True,
-    )
+def _decode_callback_tasks(tasks: Any) -> tuple[list[Any], list[Any]]:
+    """Decode queued Android extension work into (callbacks, disposed).
 
-
-def dispatch_apply_result_surface(
-    name: str,
-    result: str,
-    revision: int,
-    session_id: str,
-) -> None:
-    """Handle the receipt-only path for one surface runtime."""
-    session = _sessions.get(name)
-    if session is None or session.runtime is None:
-        raise RuntimeError(f"Surface {name!r} is not started")
-    decoded = (str(result), int(revision), str(session_id))
-    _call_runtime_for(
-        session,
-        lambda: session.runtime.handle_native_apply_result(*decoded),
-    )
-
-
-def dispatch_external_callbacks_surface(name: str, tasks: Any) -> None:
-    """Decode queued Android extension work for one surface runtime."""
-    session = _sessions.get(name)
-    if session is None or session.runtime is None:
-        raise RuntimeError(f"Surface {name!r} is not started")
-
+    Shared by main and surface ingress; the decoded batch is dispatched
+    through the session's runtime exactly like a native event batch.
+    """
     callbacks = []
     disposed = []
     for index in range(int(tasks.size())):
@@ -428,6 +430,57 @@ def dispatch_external_callbacks_surface(name: str, tasks: Any) -> None:
             raise ValueError(
                 f"Unknown external callback task: {task.getKind()!r}"
             )
+    return callbacks, disposed
+
+
+def _dispatch_events(name: str | None, events: Any) -> None:
+    """Decode and dispatch one Java event batch on one session's loop."""
+    session = _session_for(name)
+    decoded = _decode_native_events(events)
+    _call_runtime_for(
+        session,
+        lambda: session.runtime.dispatch_native_events(decoded),
+        settle=True,
+    )
+
+
+def _dispatch_event(
+    name: str | None,
+    sequence: int,
+    target: int,
+    event_name: str,
+    handler: int,
+    payload: Any,
+) -> None:
+    """Decode and dispatch the common single-event case on one session."""
+    session = _session_for(name)
+    event = _native_event(sequence, target, event_name, handler, payload)
+    _call_runtime_for(
+        session,
+        lambda: session.runtime.dispatch_native_events([event]),
+        settle=True,
+    )
+
+
+def _dispatch_apply_result(
+    name: str | None,
+    result: str,
+    revision: int,
+    session_id: str,
+) -> None:
+    """Handle the receipt-only path on one session's loop."""
+    session = _session_for(name)
+    decoded = (str(result), int(revision), str(session_id))
+    _call_runtime_for(
+        session,
+        lambda: session.runtime.handle_native_apply_result(*decoded),
+    )
+
+
+def _dispatch_external_callbacks(name: str | None, tasks: Any) -> None:
+    """Decode and run one external-callback batch on one session's loop."""
+    session = _session_for(name)
+    callbacks, disposed = _decode_callback_tasks(tasks)
     _call_runtime_for(
         session,
         lambda: session.runtime.dispatch_external_callbacks(callbacks, disposed),
@@ -513,26 +566,7 @@ def back_press_query() -> bool:
 
 def dispatch_events_direct(events: Any) -> None:
     """Dispatch a Java list of native events in one Python render batch."""
-    session = _session
-    if session is None or session.runtime is None:
-        raise RuntimeError("Python runtime is not started")
-
-    decoded = []
-    for index in range(int(events.size())):
-        event = events.get(index)
-        decoded.append(
-            _native_event(
-                event.getSequence(),
-                event.getTarget(),
-                event.getName(),
-                event.getHandler(),
-                event.getPayload(),
-            )
-        )
-    _call_runtime(
-        lambda: session.runtime.dispatch_native_events(decoded),
-        settle=True,
-    )
+    _dispatch_events(None, events)
 
 
 def dispatch_event_direct(
@@ -543,14 +577,7 @@ def dispatch_event_direct(
     payload: Any,
 ) -> None:
     """Dispatch the common single-event case without an encoded payload."""
-    session = _session
-    if session is None or session.runtime is None:
-        raise RuntimeError("Python runtime is not started")
-    event = _native_event(sequence, target, name, handler, payload)
-    _call_runtime(
-        lambda: session.runtime.dispatch_native_events([event]),
-        settle=True,
-    )
+    _dispatch_event(None, sequence, target, name, handler, payload)
 
 
 def dispatch_apply_result_direct(
@@ -559,36 +586,12 @@ def dispatch_apply_result_direct(
     session: str,
 ) -> None:
     """Handle the common receipt-only path without a synthetic Event."""
-    session_agg = _session
-    if session_agg is None or session_agg.runtime is None:
-        raise RuntimeError("Python runtime is not started")
-    decoded = (str(result), int(revision), str(session))
-    _call_runtime(
-        lambda: session_agg.runtime.handle_native_apply_result(*decoded)
-    )
+    _dispatch_apply_result(None, result, revision, session)
 
 
 def dispatch_external_callbacks_direct(tasks: Any) -> None:
     """Decode queued Android extension work into one Runtime-owned batch."""
-    session = _session
-    if session is None or session.runtime is None:
-        raise RuntimeError("Python runtime is not started")
-
-    callbacks = []
-    disposed = []
-    for index in range(int(tasks.size())):
-        task = tasks.get(index)
-        subscription = task.getCallback()
-        if task.getKind() == "dispose":
-            disposed.append(subscription)
-        elif task.getKind() == "call":
-            callbacks.append((subscription, _java_value(task.getPayload())))
-        else:
-            raise ValueError(f"Unknown external callback task: {task.getKind()!r}")
-    _call_runtime(
-        lambda: session.runtime.dispatch_external_callbacks(callbacks, disposed),
-        settle=True,
-    )
+    _dispatch_external_callbacks(None, tasks)
 
 
 def _native_event(

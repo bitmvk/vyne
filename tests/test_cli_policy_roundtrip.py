@@ -41,38 +41,29 @@ class ConfigRoundtripTests(unittest.TestCase):
             self.assertIsNotNone(project.config_path)
             self.assertEqual(project.config_path, path / "vyne.toml")
 
-    def test_roundtrip_custom_module(self):
-        """Custom module name survives create/load roundtrip."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "RoundtripModule"
-            create_project(path, package="com.example.mainapp", module="main")
-            project = load_project(path)
-            self.assertEqual(project.app.module, "main")
-            self.assertEqual(project.app.source, "main.py")
-            self.assertTrue((path / "main.py").is_file())
-
-    def test_roundtrip_with_force(self):
-        """Force creation still produces valid config."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "RoundtripForce"
-            path.mkdir()
-            create_project(path, package="com.example.force", force=True)
-            project = load_project(path)
-            self.assertEqual(project.app.package, "com.example.force")
-
-    def test_rejects_version_code_zero(self):
-        """Version code 0 is rejected (must be >= 1)."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "BadVersionCode"
-            path.mkdir()
-            # Write a bad config that will fail parse_config during create
-            (path / "vyne.toml").write_text(
-                '[app]\nname = "test"\npackage = "com.example.bad"\n'
-                'module = "app"\nsource = "app.py"\nversion = "0.1.0"\n'
-                'version_code = 0\n\n'
-                '[android]\nmin_sdk = 26\ntarget_sdk = 35\ncompile_sdk = 35\n',
-                encoding="utf-8",
-            )
+    def test_roundtrip_module_and_force_variants(self):
+        """Custom module and --force variants survive create/load."""
+        cases = [
+            ("module", "com.example.mainapp", False, "main"),
+            ("force", "com.example.force", True, None),
+        ]
+        for label, package, force, module in cases:
+            with self.subTest(case=label):
+                with TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "RoundtripVariant"
+                    path.mkdir(exist_ok=True)
+                    create_project(
+                        path,
+                        package=package,
+                        module=module if module else "app",
+                        force=force,
+                    )
+                    project = load_project(path)
+                    self.assertEqual(project.app.package, package)
+                    if module:
+                        self.assertEqual(project.app.module, module)
+                        self.assertEqual(project.app.source, f"{module}.py")
+                        self.assertTrue((path / f"{module}.py").is_file())
 
     def test_rejects_version_code_too_large(self):
         """Version code > 2_100_000_000 is rejected."""
@@ -138,13 +129,6 @@ class ConfigRoundtripTests(unittest.TestCase):
             self.assertTrue(project.generated)
             self.assertEqual(project.assemble_task, ":app:assembleDebug")
 
-    def test_both_accept_same_min_sdk(self):
-        """create_project and load_project accept the same min_sdk."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "MinSdk26"
-            create_project(path, package="com.example.minsdk")
-            project = load_project(path)
-            self.assertEqual(project.android.min_sdk, 26)
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,8 @@ from vyne._lists import (
 from vyne.events import latest
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
+
+from tests.support.runtime_helpers import SilentTransport
 from vyne.values import FrozenMap
 
 
@@ -462,15 +464,6 @@ class FixedVirtualListRuntimeTests(unittest.TestCase):
 
 
 class FixedVirtualListControllerTests(unittest.TestCase):
-    class SilentTransport:
-        preflights_commits = False
-
-        def __init__(self) -> None:
-            self.messages: list[dict] = []
-
-        def send(self, message: dict) -> None:
-            self.messages.append(message)
-
     def _runtime(self):
         controller = FixedVirtualListController()
         action = {
@@ -513,7 +506,7 @@ class FixedVirtualListControllerTests(unittest.TestCase):
             )
             return render_fixed_virtual_list(spec)
 
-        transport = self.SilentTransport()
+        transport = SilentTransport()
         runtime = Runtime(app, transport=transport)
         runtime.mount()
         runtime.acknowledge_native_apply(1)

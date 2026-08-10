@@ -1,5 +1,9 @@
 # Virtualized lists
 
+> The future extensibility direction is recorded in
+> [List building blocks](list-building-blocks.md). It is not part of the current
+> fixed-list implementation.
+
 `List` renders a fixed-extent virtualized list: only the items inside the
 selected window are composed, everything else is a blank spacer. The native
 host keeps scrolling free and reports where the in-flight gesture is heading;

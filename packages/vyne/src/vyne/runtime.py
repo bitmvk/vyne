@@ -457,9 +457,7 @@ class _AsyncCallbackManager:
             return
 
         try:
-            self.runtime._flush_batched_render(origin)
-            if not self.runtime._coordinator.in_flight:
-                self.runtime._commit_framework()
+            self.runtime._flush_and_commit(origin)
         except Exception as exc:
             self.runtime._state_journal.rollback()
             self.runtime._send_error_commit(str(exc))
@@ -561,7 +559,6 @@ class Runtime:
             dict[Any, _ImperativeBindingIntent] | None
         ) = None
         self._render_staged_binding_targets: set[Any] | None = None
-        self._hooks = self._root_scope.hooks
         # Render-phase tracking for mutation guard (SCHED-03).
         self._phase: str | None = None
         self._current_event: Event | None = None
@@ -625,10 +622,7 @@ class Runtime:
     def _recovery_state(self) -> RecoveryState:
         return self._transaction.recovery_state
 
-    def dispose(self) -> None:
-        self.states.rollback()
-        self._component_checkpoint = None
-        self.transition_to(RecoveryState.DISPOSED, cause="renderer disposed")    # ---- public API ---------------------------------------------------------
+    # ---- public API ---------------------------------------------------------
 
     def mount(self) -> None:
         """Start the runtime: render the root component and emit the first commit.
@@ -1151,50 +1145,13 @@ class Runtime:
         if not active_callbacks:
             return
 
-        was_batching = self._batching_events
-        previous_origin = self._batched_origin_event
-        failure: Exception | None = None
-        awaitables: list[tuple[Any, None]] = []
-
-        self._capture_component_checkpoint()
-        self._state_journal.begin()
-        try:
-            self._batching_events = True
-            for subscription, payload in active_callbacks:
-                result = self._dispatch_external_callback_now(subscription, payload)
-                if inspect.isawaitable(result):
-                    awaitables.append((result, None))
-        except Exception as exc:
-            failure = exc
-        finally:
-            self._batching_events = was_batching
-
-        if failure is not None:
-            self._close_awaitables(awaitables)
-            self._batched_origin_event = previous_origin
-            self._state_journal.rollback()
-            self._send_error_commit(str(failure))
-            return
-
-        try:
-            if not was_batching:
-                self._flush_batched_render(None)
-                if not self._coordinator.in_flight:
-                    self._commit_framework()
-        except Exception as exc:
-            self._close_awaitables(awaitables)
-            awaitables.clear()
-            logging.getLogger("vyne").error(
-                "render after event batch failed: %s",
-                exc,
-                exc_info=(type(exc), exc, exc.__traceback__),
-            )
-            self._state_journal.rollback()
-            self._send_error_commit(str(exc))
-        finally:
-            self._batched_origin_event = previous_origin
-        for awaitable, origin in awaitables:
-            self._async_callbacks.schedule(awaitable, origin)
+        self._run_batch_transaction(
+            active_callbacks,
+            lambda entry: self._dispatch_external_callback_now(*entry),
+            origin_for=lambda _entry: None,
+            flush_origin_for=lambda: None,
+            log_dispatch_failure=False,
+        )
 
     def _owns_external_callback(
         self,
@@ -1239,6 +1196,83 @@ class Runtime:
             self._current_event = previous_event
             self._phase = previous_phase
 
+    def _run_batch_transaction(
+        self,
+        items: list[Any],
+        dispatch_one: Callable[[Any], Any],
+        *,
+        origin_for: Callable[[Any], Event | None],
+        flush_origin_for: Callable[[], Event | None],
+        log_dispatch_failure: bool,
+    ) -> None:
+        """Run one ordered batch transaction with journaled rollback.
+
+        Shared by native event batches and external callback batches.  The
+        caller owns boundary decoding (native receipt prefix, subscription
+        validation); this owns the framework/state journal, component
+        checkpoint, batched render publication, failure recovery, and
+        async-callback admission.  Intentional pipeline differences are
+        explicit parameters: ``origin_for`` selects the origin event (or
+        None) recorded for each returned awaitable,
+        ``flush_origin_for`` supplies the origin passed to the batched
+        render flush (None for external callbacks; the last native event
+        that actually dispatched for native batches), and
+        ``log_dispatch_failure`` controls whether a handler exception is
+        logged with a traceback before the error commit (native handlers
+        log; external callbacks stay silent).
+        """
+        was_batching = self._batching_events
+        previous_origin = self._batched_origin_event
+        failure: Exception | None = None
+        awaitables: list[tuple[Any, Event | None]] = []
+
+        # Begin one framework/state transaction for this batch (COORD-05).
+        self._capture_component_checkpoint()
+        self._state_journal.begin()
+
+        try:
+            self._batching_events = True
+            for item in items:
+                result = dispatch_one(item)
+                if inspect.isawaitable(result):
+                    awaitables.append((result, origin_for(item)))
+        except Exception as exc:
+            failure = exc
+            if log_dispatch_failure:
+                logging.getLogger("vyne").error(
+                    "event handler failed: %s",
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+        finally:
+            self._batching_events = was_batching
+
+        if failure is not None:
+            self._close_awaitables(awaitables)
+            self._batched_origin_event = previous_origin
+            # Rollback state mutations (COORD-05).
+            self._state_journal.rollback()
+            self._send_error_commit(str(failure))
+            return
+
+        try:
+            if not was_batching:
+                self._flush_and_commit(flush_origin_for())
+        except Exception as exc:
+            self._close_awaitables(awaitables)
+            awaitables.clear()
+            logging.getLogger("vyne").error(
+                "render after event batch failed: %s",
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            self._state_journal.rollback()
+            self._send_error_commit(str(exc))
+        finally:
+            self._batched_origin_event = previous_origin
+        for awaitable, origin in awaitables:
+            self._async_callbacks.schedule(awaitable, origin)
+
     def _dispatch_native_events(self, events: list[Event]) -> None:
         """Run one ordered event batch after boundary decoding/validation."""
 
@@ -1261,63 +1295,13 @@ class Runtime:
         if not events:
             return
 
-        was_batching = self._batching_events
-        previous_origin = self._batched_origin_event
-        failure: Exception | None = None
-        awaitables: list[tuple[Any, Event]] = []
-
-        # Begin one framework/state transaction for this event batch.
-        self._capture_component_checkpoint()
-        self._state_journal.begin()
-
-        try:
-            self._batching_events = True
-            for event in events:
-                result = self._dispatch_native_event(event)
-                if inspect.isawaitable(result):
-                    awaitables.append((result, event))
-        except Exception as exc:
-            failure = exc
-            # Observability: a failing handler must never be silent. The
-            # traceback goes to the Python log (python.stderr on Android);
-            # the error commit below preserves the accepted UI (RE-1).
-            logging.getLogger("vyne").error(
-                "event handler failed: %s",
-                exc,
-                exc_info=(type(exc), exc, exc.__traceback__),
-            )
-        finally:
-            self._batching_events = was_batching
-
-        if failure is not None:
-            self._close_awaitables(awaitables)
-            self._batched_origin_event = previous_origin
-            # Rollback state mutations (COORD-05).
-            self._state_journal.rollback()
-            self._send_error_commit(str(failure))
-            return
-
-        try:
-            if not was_batching:
-                self._flush_batched_render(self._batched_origin_event)
-                # Keep the journal attached to an in-flight candidate.  Exact
-                # OK commits it; failure rolls it back.
-                if not self._coordinator.in_flight:
-                    self._commit_framework()
-        except Exception as exc:
-            self._close_awaitables(awaitables)
-            awaitables.clear()
-            logging.getLogger("vyne").error(
-                "render after event batch failed: %s",
-                exc,
-                exc_info=(type(exc), exc, exc.__traceback__),
-            )
-            self._state_journal.rollback()
-            self._send_error_commit(str(exc))
-        finally:
-            self._batched_origin_event = previous_origin
-        for awaitable, origin in awaitables:
-            self._async_callbacks.schedule(awaitable, origin)
+        self._run_batch_transaction(
+            events,
+            self._dispatch_native_event,
+            origin_for=lambda event: event,
+            flush_origin_for=lambda: self._batched_origin_event,
+            log_dispatch_failure=True,
+        )
 
     # ---- internal: render scheduling ----------------------------------------
 
@@ -1847,6 +1831,17 @@ class Runtime:
         finally:
             self._current_event = previous_event
             self._phase = previous_phase
+
+    def _flush_and_commit(self, origin: Event | None) -> None:
+        """Flush the batched render and commit the framework when idle.
+
+        Shared by batch dispatch (native events, external callbacks) and
+        the async-callback flush path.  Callers own failure handling so
+        each path keeps its logging and recovery policy.
+        """
+        self._flush_batched_render(origin)
+        if not self._coordinator.in_flight:
+            self._commit_framework()
 
     def _flush_batched_render(self, origin: Event | None) -> None:
         """Flush a batched render: run passes until done, then emit commit.

@@ -5,7 +5,7 @@ Material 3 component catalog.  It provides a machine-checkable coverage index
 for the component families implemented by this package.
 """
 
-from vyne.material.components import (
+from vyne_material.components import (
     Badge,
     Badged,
     BottomAppBar,
@@ -59,7 +59,7 @@ from vyne.material.components import (
     Tooltip,
     TopAppBar,
 )
-from vyne.material.theme import (
+from vyne_material.theme import (
     ColorScheme,
     DEFAULT_THEME,
     MaterialTheme,

@@ -1,8 +1,7 @@
 # Project Generation
 
 Sources: `vyne/cli/generation.py`, `vyne/cli/new.py`,
-`vyne/cli/_templates.py`, `scripts/generate_project_templates.py`,
-`setup.py`.
+`vyne/cli/templates/` (template resources).
 
 ## The problem
 
@@ -47,9 +46,10 @@ validation.
 
 ## Templates
 
-`_templates.py` holds the generated project files (app.py, vyne.toml,
-Gradle files, tests). `scripts/generate_project_templates.py`
-regenerates and checks them (`--check` keeps them byte-identical).
+The literal project files scaffolded by `vyne new` live in
+`vyne/cli/templates/` (Gradle build files, settings, manifest, gradle
+properties). They ship as package resources so generation works from an
+installed wheel; `vyne.cli.templates.load(name)` reads one template.
 
 ## Android host packaging
 

@@ -33,10 +33,9 @@ if TYPE_CHECKING:
     from vyne.refs import Ref, ViewHandle
     from vyne.runtime import Runtime
 
-# Wire marker identifying a lowered AnimatedValue payload.  Canvas draw
+# Wire marker identifying a lowered AnimatedNode payload.  Canvas draw
 # operations carry these inline JSON markers; the Kotlin engine resolves
 # them through the stable operation identity.
-ANIMATED_VALUE_MARKER = "__vyne_animated_value__"
 ANIMATED_NODE_MARKER = "__vyne_animated_node__"
 
 # Supported easing curves for tween animations.
@@ -44,10 +43,7 @@ _TWEEN_EASINGS = frozenset(
     {"linear", "ease_in", "ease_out", "ease_in_out", "overshoot", "bounce"}
 )
 
-# Easing names valid on AnimatedValue (includes "spring").
-_ANIMATED_VALUE_EASINGS = _TWEEN_EASINGS | {"spring"}
-
-# Public retarget policies accepted by AnimatedValue and animate().
+# Public retarget policies accepted by animate().
 _RETARGET_POLICIES = frozenset(
     {"restart", "maintain_velocity", "snap_to_end", "ignore"}
 )
@@ -908,181 +904,10 @@ def _interpolate_number(
     return outputs[index] + (outputs[index + 1] - outputs[index]) * fraction
 
 
-@dataclass(frozen=True)
-class AnimatedValue:
-    """A declarative numeric target that animates when it changes.
-
-    When used inside a ``Canvas`` draw list, the value is lowered to a
-    protocol-safe marker with a stable operation ID.  The Kotlin engine
-    uses this identity to drive the animation rather than relying on
-    structural JSON paths.
-
-    Arithmetic returns another AnimatedValue with the same motion settings,
-    which makes it convenient to derive synchronized Canvas geometry.
-    """
-
-    value: int | float
-    duration: int = 300
-    easing: str = "ease_out"
-    damping_ratio: float | None = None
-    stiffness: float | None = None
-    retarget: str | None = None
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.value, int | float)
-            or isinstance(self.value, bool)
-            or not math.isfinite(self.value)
-        ):
-            raise TypeError("AnimatedValue value must be a finite number")
-        if (
-            not isinstance(self.duration, int)
-            or isinstance(self.duration, bool)
-            or self.duration < 0
-        ):
-            raise ValueError("AnimatedValue duration must be a non-negative integer")
-        if self.easing not in _ANIMATED_VALUE_EASINGS:
-            raise ValueError(f"Unsupported AnimatedValue easing: {self.easing!r}")
-        object.__setattr__(
-            self,
-            "retarget",
-            _resolve_retarget_policy(self.retarget, easing=self.easing),
-        )
-        if self.easing == "spring":
-            damping_ratio = 0.8 if self.damping_ratio is None else self.damping_ratio
-            stiffness = 380.0 if self.stiffness is None else self.stiffness
-            if (
-                not isinstance(damping_ratio, int | float)
-                or isinstance(damping_ratio, bool)
-                or not math.isfinite(damping_ratio)
-                or damping_ratio <= 0
-            ):
-                raise ValueError("AnimatedValue spring damping_ratio must be positive")
-            if (
-                not isinstance(stiffness, int | float)
-                or isinstance(stiffness, bool)
-                or not math.isfinite(stiffness)
-                or stiffness <= 0
-            ):
-                raise ValueError("AnimatedValue spring stiffness must be positive")
-            object.__setattr__(self, "damping_ratio", float(damping_ratio))
-            object.__setattr__(self, "stiffness", float(stiffness))
-        elif self.damping_ratio is not None or self.stiffness is not None:
-            raise ValueError(
-                "damping_ratio and stiffness require AnimatedValue easing='spring'"
-            )
-
-    def to_spec(self) -> MotionSpec:
-        """Convert this AnimatedValue's settings to a MotionSpec."""
-        if self.easing == "spring":
-            return Spring(
-                stiffness=float(self.stiffness or 380.0),
-                damping_ratio=float(self.damping_ratio or 0.8),
-                retarget=_retarget_policy(self.retarget),
-            )
-        return Tween(
-            duration_ms=self.duration,
-            easing=self.easing,
-            retarget=_retarget_policy(self.retarget),
-        )
-
-    def to_protocol_value(self, op_id: str | None = None) -> dict[str, object]:
-        """Lower to protocol-safe marker with optional stable op_id."""
-        payload: dict[str, object] = {
-            ANIMATED_VALUE_MARKER: True,
-            "value": float(self.value),
-            "duration": self.duration,
-            "easing": self.easing,
-            "retarget": self.retarget,
-        }
-        if self.easing == "spring":
-            payload["damping_ratio"] = self.damping_ratio
-            payload["stiffness"] = self.stiffness
-        if op_id is not None:
-            payload["_vyne_op_id"] = op_id
-        return payload
-
-    def clamp(
-        self,
-        minimum: int | float | None = None,
-        maximum: int | float | None = None,
-    ) -> "AnimatedValue":
-        value = float(self.value)
-        if minimum is not None:
-            value = max(float(minimum), value)
-        if maximum is not None:
-            value = min(float(maximum), value)
-        return self._with(value)
-
-    def _coerce(self, other: object) -> float:
-        if isinstance(other, AnimatedValue):
-            if other._motion_settings() != self._motion_settings():
-                raise ValueError(
-                    "AnimatedValue arithmetic requires matching motion settings"
-                )
-            return float(other.value)
-        if isinstance(other, int | float) and not isinstance(other, bool):
-            if math.isfinite(other):
-                return float(other)
-        raise TypeError("AnimatedValue arithmetic requires finite numbers")
-
-    def _with(self, value: float) -> "AnimatedValue":
-        return AnimatedValue(
-            value,
-            duration=self.duration,
-            easing=self.easing,
-            damping_ratio=self.damping_ratio,
-            stiffness=self.stiffness,
-            retarget=self.retarget,
-        )
-
-    def _motion_settings(self) -> tuple[object, ...]:
-        return (
-            self.duration,
-            self.easing,
-            self.damping_ratio,
-            self.stiffness,
-            self.retarget,
-        )
-
-    def __add__(self, other: object) -> "AnimatedValue":
-        return self._with(float(self.value) + self._coerce(other))
-
-    def __radd__(self, other: object) -> "AnimatedValue":
-        return self + other
-
-    def __sub__(self, other: object) -> "AnimatedValue":
-        return self._with(float(self.value) - self._coerce(other))
-
-    def __rsub__(self, other: object) -> "AnimatedValue":
-        return self._with(self._coerce(other) - float(self.value))
-
-    def __mul__(self, other: object) -> "AnimatedValue":
-        return self._with(float(self.value) * self._coerce(other))
-
-    def __rmul__(self, other: object) -> "AnimatedValue":
-        return self * other
-
-    def __truediv__(self, other: object) -> "AnimatedValue":
-        divisor = self._coerce(other)
-        if divisor == 0:
-            raise ZeroDivisionError("AnimatedValue division by zero")
-        return self._with(float(self.value) / divisor)
-
-    def __rtruediv__(self, other: object) -> "AnimatedValue":
-        divisor = float(self.value)
-        if divisor == 0:
-            raise ZeroDivisionError("AnimatedValue division by zero")
-        return self._with(self._coerce(other) / divisor)
-
-    def __neg__(self) -> "AnimatedValue":
-        return self._with(-float(self.value))
-
-
 def encode_animated_values(value: object) -> object:
-    """Recursively lower AnimatedValue instances to protocol-safe markers.
+    """Recursively lower AnimatedNode instances to protocol-safe markers.
 
-    Each AnimatedValue is encoded with its stable operation identity
+    Each AnimatedNode is encoded with its stable operation identity
     so the Kotlin engine can locate and animate the target field.
 
     Accepts dict and Mapping (e.g. FrozenMap) so deeply frozen props
@@ -1091,8 +916,6 @@ def encode_animated_values(value: object) -> object:
     from collections.abc import Mapping
     if isinstance(value, AnimatedNode):
         return value.to_protocol_value()
-    if isinstance(value, AnimatedValue):
-        return value.to_protocol_value()
     if isinstance(value, list | tuple):
         return [encode_animated_values(item) for item in value]
     if isinstance(value, (dict, Mapping)):
@@ -1100,16 +923,15 @@ def encode_animated_values(value: object) -> object:
     return value
 
 
-def is_animated_value_payload(value: object) -> bool:
-    """Return True if ``value`` is a protocol marker for an animated value.
+def is_animated_node_payload(value: object) -> bool:
+    """Return True if ``value`` is a protocol marker for an animated node.
 
     Accepts dict and Mapping (e.g. FrozenMap) so that deeply frozen
-    element props still pass the animated-value check (MODEL-03).
+    element props still pass the animated-node check (MODEL-03).
     """
     from collections.abc import Mapping
     return isinstance(value, (dict, Mapping)) and (
-        value.get(ANIMATED_VALUE_MARKER) is True
-        or value.get(ANIMATED_NODE_MARKER) is True
+        value.get(ANIMATED_NODE_MARKER) is True
     )
 
 
@@ -1148,8 +970,8 @@ def _resolve_retarget_policy(value: object, *, easing: str) -> str:
 
 
 def _retarget_policy(value: object) -> RetargetPolicy:
-    # AnimatedValue materializes its default in __post_init__; animate()
-    # resolves its optional public argument before constructing a MotionSpec.
+    # animate() resolves its optional public argument before constructing a
+    # MotionSpec.
     return RetargetPolicy[str(value).upper()]
 
 

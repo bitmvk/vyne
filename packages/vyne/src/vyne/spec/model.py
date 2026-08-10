@@ -71,11 +71,10 @@ class ValueSpec:
                 raise TypeError(f"{path} does not accept null")
             return
 
-        # Animated value markers validate their inner payload against the
+        # Animated node markers validate their inner payload against the
         # underlying value contract.
         if isinstance(value, (dict, FrozenMap)) and (
-            value.get("__vyne_animated_value__") is True
-            or value.get("__vyne_animated_node__") is True
+            value.get("__vyne_animated_node__") is True
         ):
             if "value" not in value:
                 raise TypeError(f"{path} animated marker requires value")
@@ -297,3 +296,9 @@ class EventSpec:
     # is applied and any bridge-safe payload is accepted. A spec that is
     # neither closed-with-fields nor open means a closed empty payload.
     open_payload: bool = False
+    # True when the event is part of the public constructor callback surface
+    # (``on_<name>`` props). Internal renderer observations used by the
+    # virtual-list controller are protocol contracts, not public constructor
+    # callbacks, and set this to False. The flag only controls typing/docs
+    # surface; wire behavior and per-kind applicability are unchanged.
+    public_callback: bool = True

@@ -22,7 +22,6 @@ from __future__ import annotations
 import itertools
 import random
 import unittest
-from copy import deepcopy
 
 from vyne.lowering import lower_element, CanonicalElement
 from vyne.elements import Element
@@ -87,70 +86,6 @@ def _nodes_equal_structurally(a: dict, b: dict) -> bool:
     if sorted(a.get("latest_events", [])) != sorted(b.get("latest_events", [])):
         return False
     return _trees_equal_structurally(a, b)
-
-
-def _verify_plan(
-    test: unittest.TestCase,
-    old_snapshot: RenderSnapshot,
-    desired: CanonicalElement,
-    expected_element: Element,
-    next_node_id: int,
-) -> None:
-    """Verify that reconciling old_snapshot → desired produces ops that,
-    when applied to a NativeModel primed with the old_snapshot ops, yield
-    the same structural tree as building expected_element from scratch.
-
-    Also asserts that the old_snapshot is not mutated by planning (RC-3).
-    """
-    # Snapshot old_snapshot for mutation check.
-    old_root_id_before = old_snapshot.root.id if old_snapshot.root else None
-    old_index_keys_before = set(old_snapshot.node_index.keys())
-    old_revision_before = old_snapshot.revision
-
-    # Plan reconciliation.
-    result = plan_reconcile(old_snapshot, desired, next_node_id=next_node_id)
-
-    # RC-3: old snapshot must not be mutated.
-    test.assertEqual(
-        old_root_id_before,
-        old_snapshot.root.id if old_snapshot.root else None,
-        "old snapshot root was mutated during planning",
-    )
-    test.assertEqual(
-        old_index_keys_before,
-        set(old_snapshot.node_index.keys()),
-        "old snapshot node_index was mutated during planning",
-    )
-    test.assertEqual(
-        old_revision_before,
-        old_snapshot.revision,
-        "old snapshot revision was mutated during planning",
-    )
-
-    # Apply ops to a NativeModel primed with the old snapshot state.
-    model = NativeModel()
-    if old_snapshot.root is not None:
-        # We can't easily reconstruct the old snapshot ops, so we build
-        # the expected old tree in the model via the initial plan approach.
-        # Instead, we build a fresh model from the old snapshot's desired
-        # (which we don't have).  For the test to work, we pass in the
-        # actual old_desired element.  See verify_transition() below.
-        pass
-
-    # Apply the new ops.
-    _apply_plan(model, result.ops)
-
-    # Build expected model from desired.
-    expected_model = _build_fresh_model(expected_element)
-
-    # Compare.
-    test.assertTrue(
-        _trees_equal_structurally(model.tree(), expected_model.tree()),
-        f"Trees do not match structurally.\n"
-        f"Applied: {model.tree()}\n"
-        f"Expected: {expected_model.tree()}\n"
-        f"Ops: {[op.op for op in result.ops]}",
-    )
 
 
 def verify_transition(

@@ -9,30 +9,8 @@ from vyne.events import Event
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import SilentTransport, native_listener_event
 
-class SilentTransport:
-    def __init__(self) -> None:
-        self.messages: list[dict] = []
-
-    def send(self, message: dict) -> None:
-        self.messages.append(message)
-
-    @property
-    def latest(self) -> dict:
-        return self.messages[-1]
-
-
-def listener(transport, sequence: int = 1) -> Event:
-    operation = next(
-        op for op in transport.latest["ops"] if op["op"].startswith("listen")
-    )
-    return Event(
-        name=operation["event"],
-        target=operation["id"],
-        handler=operation["handler"],
-        payload={},
-        sequence=sequence,
-    )
 
 
 class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
@@ -44,7 +22,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             cells["value"].set(1)
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(cells["value"].value, 1)
 
@@ -57,7 +35,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             seen.append((event.name, event.sequence))
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport, sequence=44)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=44)])
         await runtime._settle_async_callbacks()
         self.assertEqual(seen, [("click", 44)])
 
@@ -72,7 +50,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             return work()
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(cells["value"].value, 2)
 
@@ -84,7 +62,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
 
         runtime, transport = self.mount(cells, handler)
         baseline = len(transport.messages)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(len(transport.messages), baseline)
 
@@ -97,7 +75,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
 
         runtime, transport = self.mount(cells, handler)
         baseline = len(transport.messages)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(len(transport.messages), baseline)
 
@@ -113,7 +91,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
 
         runtime, transport = self.mount(cells, handler)
         baseline = len(transport.messages)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(cells["value"].value, 3)
         self.assertEqual(len(transport.messages), baseline + 1)
@@ -131,7 +109,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
 
         runtime, transport = self.mount(cells, handler)
         baseline = len(transport.messages)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(len(transport.messages), baseline)
         gate.set()
@@ -152,7 +130,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             cells["value"].set(index + 1)
 
         runtime, transport = self.mount(cells, handler)
-        event = listener(transport)
+        event = native_listener_event(transport)
         runtime.dispatch_native_events([event])
         runtime.dispatch_native_events([event])
         await runtime._settle_async_callbacks()
@@ -208,19 +186,8 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             calls.append(event.sequence)
 
         runtime, transport = self.mount(cells, latest(handler))
-        operation = next(
-            op for op in transport.latest["ops"] if op["op"] == "listen_latest"
-        )
         runtime.dispatch_native_events(
-            [
-                Event(
-                    name=operation["event"],
-                    target=operation["id"],
-                    handler=operation["handler"],
-                    payload={},
-                    sequence=3,
-                )
-            ]
+            [native_listener_event(transport, sequence=3)]
         )
         await runtime._settle_async_callbacks()
         self.assertEqual(calls, [3])
@@ -236,7 +203,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             cells["value"].set(1)
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(phases, ["event", "event"])
 
@@ -250,7 +217,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             thread_ids.append(threading.get_ident())
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         self.assertEqual(len(set(thread_ids)), 1)
 
@@ -267,7 +234,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
                 cancelled.set()
 
         runtime, transport = self.mount(cells, handler)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await started.wait()
         runtime.dispose()
         await asyncio.sleep(0)
@@ -285,7 +252,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
         transport = SilentTransport()
         runtime, _ = self.mount(cells, handler, transport=transport)
         runtime.acknowledge_native_apply(1)
-        runtime.dispatch_native_events([listener(transport, sequence=12)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=12)])
         await runtime._settle_async_callbacks()
         self.assertEqual(transport.latest["revision"], 2)
 
@@ -313,7 +280,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
         transport = SilentTransport()
         runtime, _ = self.mount(cells, handler, transport=transport)
         runtime.acknowledge_native_apply(1)
-        runtime.dispatch_native_events([listener(transport)])
+        runtime.dispatch_native_events([native_listener_event(transport)])
         await runtime._settle_async_callbacks()
         gate.set()
         await runtime._settle_async_callbacks()
@@ -332,7 +299,7 @@ class AsyncCallbackMatrixTests(unittest.IsolatedAsyncioTestCase):
             called = True
 
         runtime, transport = self.mount(cells, handler)
-        event = listener(transport)
+        event = native_listener_event(transport)
         runtime.dispatch_native_events(
             [
                 Event(

@@ -9,6 +9,11 @@ Sources: `vyne/path_data.py`, `vyne/elements.py` (Path, Canvas),
 `Canvas(draw=[...])` is a declarative 2D drawing surface. The `draw` list
 describes drawing operations as JSON dicts.
 
+The public `Canvas()` constructor compiles a **list** of operations
+(`_compile_canvas_draw`); canonical storage freezes that list into an
+immutable tuple, and the schema value domain accepts both forms so the
+lowered tuple validates directly.
+
 ### Draw operations
 
 | kind | required fields | extra fields |
@@ -47,9 +52,9 @@ each operation a `_vyne_op_id`:
 
 - the id is a content hash (first 12 hex chars) plus an occurrence
   counter: `circle_ab12cd34ef56_0`
-- animated markers (`__vyne_animated_value__` /
-  `__vyne_animated_node__`) are replaced by a placeholder before hashing,
-  so changing a target does not replace the native presentation slot
+- animated markers (`__vyne_animated_node__`) are replaced by a placeholder
+  before hashing, so changing a target does not replace the native
+  presentation slot
 - operations that already carry an id keep it
 
 ### Animatable Canvas fields

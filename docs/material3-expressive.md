@@ -5,11 +5,17 @@ Python-owned composites. Components lower to the existing `Box`, `Layout`,
 `Text`, `TextInput`, `Canvas`, and other renderer primitives; there are no new
 Material-specific Kotlin view kinds or state machines.
 
-Import widgets from `vyne.material` (or from the flat `vyne` API):
+Import widgets from `vyne_material` (the `vyne-material` distribution):
+
+Install the distribution into the same environment as `vyne`:
+
+```bash
+uv add vyne-material
+```
 
 ```python
 from vyne import Column, state
-from vyne.material import Button, Checkbox, Slider, TextField
+from vyne_material import Button, Checkbox, Slider, TextField
 
 
 def Settings():
@@ -59,7 +65,7 @@ in Python and makes initial rendering and later updates use the same path.
 | Chips | `Chip` (`assist`, `filter`, `input`, `suggestion`) |
 | Date pickers | `DatePicker`, `DateRangePicker` |
 | Dialogs | `Dialog` |
-| Divider | `vyne.material.Divider`, `MaterialDivider` |
+| Divider | `vyne_material.Divider`, `MaterialDivider` |
 | Extended FAB | `ExtendedFloatingActionButton` |
 | FAB menu | `FloatingActionButtonMenu`, `FabMenuItem` |
 | Floating action button | `FloatingActionButton` |
@@ -96,7 +102,7 @@ values to primitive props before reconciliation.
 
 ```python
 from dataclasses import replace
-from vyne.material import Button, DEFAULT_THEME
+from vyne_material import Button, DEFAULT_THEME
 
 brand = replace(
     DEFAULT_THEME,
@@ -113,15 +119,13 @@ The Kotlin renderer stays mechanical; component behavior remains Python-owned.
 - Sliders use horizontal pointer-axis capture, so an initially horizontal drag
   remains attached despite vertical finger jitter while an initially vertical
   gesture scrolls the parent. Pointer moves use `latest(handler)` delivery to
-  discard obsolete queued positions. Thumb and track geometry use short
-  velocity-preserving `AnimatedValue` transitions, smoothing coalesced
-  positions from the current displayed geometry. Continuous/discrete value
-  calculation, range-thumb selection, and step snapping remain Python-owned.
-- Switch handles animate between the 16 dp off and 24 dp on geometry with the
-  interruptible Expressive FastSpatial values (damping `0.6`, stiffness `800`).
-  Python supplies those targets and parameters through generic `AnimatedValue`
-  spring data; the native Canvas only integrates it. There is no separate
-  oversized pressed-handle phase.
+  discard obsolete queued positions. Thumb and track geometry track the
+  controlled value directly; continuous/discrete value calculation,
+  range-thumb selection, and step snapping remain Python-owned.
+- Switch handles snap between the 16 dp off and 24 dp on geometry. Python
+  owns the geometry and supplies static numeric Canvas targets; the native
+  Canvas only draws them. There is no separate oversized pressed-handle
+  phase.
 - Carousel currently uses controlled previous/next actions; swipe selection is
   not yet implemented on top of the generic pointer events.
 - Sheets are controlled and dismissible; drag-to-expand/dismiss and velocity

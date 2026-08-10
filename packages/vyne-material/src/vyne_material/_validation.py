@@ -11,10 +11,10 @@ from __future__ import annotations
 import math
 from typing import Any, TYPE_CHECKING
 
-from vyne.material.theme import ColorScheme
+from vyne_material.theme import ColorScheme
 
 if TYPE_CHECKING:
-    from vyne.material._callbacks import CallbackAdapter
+    from vyne_material._callbacks import CallbackAdapter
 
 
 def validate_finite(value: Any, name: str) -> float:

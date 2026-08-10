@@ -23,6 +23,12 @@ from vyne.transport import MemoryTransport
 from vyne.component import component
 
 
+def _mount_once(runtime) -> None:
+    """Render one element tree once without going through the mount gate."""
+    runtime._mounted = True
+    runtime._render_once()
+
+
 class DuplicateElementOccurrenceTests(unittest.TestCase):
     """MO-2: Duplicate Element occurrences and cross-runtime reuse produce
     distinct mounts."""
@@ -33,8 +39,7 @@ class DuplicateElementOccurrenceTests(unittest.TestCase):
         root = Box(child, child)
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         # Should have 3 nodes: root Box + 2 Text children
         self.assertGreaterEqual(len(rt._coordinator.accepted_index), 3,
@@ -53,8 +58,7 @@ class DuplicateElementOccurrenceTests(unittest.TestCase):
         root = Box(*(shared for _ in range(5)))
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         text_nodes = [n for n in rt._coordinator.accepted_index.values() if n.kind == "Text"]
         self.assertEqual(len(text_nodes), 5,
@@ -80,8 +84,7 @@ class DuplicateElementOccurrenceTests(unittest.TestCase):
         root = Box(CompA(), CompB())
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         text_nodes = [n for n in rt._coordinator.accepted_index.values() if n.kind == "Text"]
         self.assertEqual(len(text_nodes), 2,
@@ -94,8 +97,7 @@ class DuplicateElementOccurrenceTests(unittest.TestCase):
         root = Box(e1, e2)
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         text_nodes = [n for n in rt._coordinator.accepted_index.values() if n.kind == "Text"]
         self.assertEqual(len(text_nodes), 2)
@@ -111,8 +113,7 @@ class RefOccurrenceTests(unittest.TestCase):
         root = Box(ref=ref)
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         self.assertIsNotNone(ref.current)
         self.assertTrue(ref.current.valid)
@@ -239,8 +240,7 @@ class RefOccurrenceTests(unittest.TestCase):
         )
 
         rt = Runtime(lambda: root, transport=MemoryTransport())
-        rt._mounted = True
-        rt._render_once()
+        _mount_once(rt)
 
         self.assertIsNotNone(ref1.current)
         self.assertIsNotNone(ref2.current)

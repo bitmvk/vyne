@@ -390,16 +390,20 @@ class BridgeValueTests(unittest.TestCase):
                 with self.assertRaisesRegex(TypeError, "native bridge"):
                     ensure_bridge_value(bad, prop_name="width")
 
-    def test_nested_values_checked_recursively(self):
-        with self.assertRaisesRegex(TypeError, "native bridge"):
-            ensure_bridge_value({"a": [1, {"b": math.nan}]}, prop_name="draw")
-
-    def test_frozen_and_tuple_values_pass(self):
+    def test_style_and_frozen_values_can_cross_bridge(self):
+        from vyne.style import Style
         from vyne.values import FrozenMap
+        ensure_bridge_value(Style(text_color="#123456"), prop_name="style")
         ensure_bridge_value(
             FrozenMap([("a", (1, 2)), ("b", FrozenMap([("c", "x")]))]),
             prop_name="draw",
         )
+        with self.assertRaisesRegex(TypeError, "native bridge"):
+            ensure_bridge_value({"value": float("nan")}, prop_name="value")
+
+    def test_nested_values_checked_recursively(self):
+        with self.assertRaisesRegex(TypeError, "native bridge"):
+            ensure_bridge_value({"a": [1, {"b": math.nan}]}, prop_name="draw")
 
 
 class ErrorCommitTests(unittest.TestCase):
@@ -413,6 +417,11 @@ class ErrorCommitTests(unittest.TestCase):
         self.assertEqual(texts, ["Error: boom"])
         kinds = [op["kind"] for op in commit["ops"] if op["op"] == "create"]
         self.assertEqual(kinds, ["Layout", "Text"])
+
+    def test_error_commit_carries_revision_and_prefix(self):
+        commit = error_commit("failed", revision=7, prefix="Error: ")
+        self.assertEqual(commit["revision"], 7)
+        self.assertEqual(commit["ops"][-2]["props"], {"text": "Error: failed"})
 
 
 if __name__ == "__main__":

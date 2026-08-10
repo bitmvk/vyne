@@ -10,6 +10,7 @@ composes them into its hook — no framework-side wiring exists.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import unittest
 from types import SimpleNamespace
 
@@ -18,6 +19,19 @@ from vyne.bootstrap import (
     run_app,
 )
 from vyne.launch import LaunchData
+
+
+@contextmanager
+def _registration_attempt():
+    """Run one body inside a host registration attempt context."""
+    import vyne.bootstrap as bm
+
+    attempt = bm._RegistrationAttempt("x")
+    token = bm._registration_attempt.set(attempt)
+    try:
+        yield attempt
+    finally:
+        bm._registration_attempt.reset(token)
 
 
 class PreLaunchTests(unittest.TestCase):
@@ -36,7 +50,6 @@ class PreLaunchTests(unittest.TestCase):
             pass
 
     def test_cold_start_runs_app_hook_before_mount(self) -> None:
-        import vyne.bootstrap as bm
         from vyne.runtime import Runtime
         from vyne.transport import MemoryTransport
 
@@ -46,20 +59,15 @@ class PreLaunchTests(unittest.TestCase):
             calls.append(f"app:{context.launch.origin}")
 
         runtime = Runtime(lambda: None, transport=MemoryTransport())
-        attempt = bm._RegistrationAttempt("x")
-        token = bm._registration_attempt.set(attempt)
-        try:
+        with _registration_attempt() as attempt:
             run_app(lambda: None, pre_launch=app_hook)
             chain = (attempt.app_hook,)
             _run_pre_launch_chain(
                 chain, runtime.build_root_context(LaunchData(origin="cold"))
             )
-            self.assertEqual(["app:cold"], calls)
-        finally:
-            bm._registration_attempt.reset(token)
+        self.assertEqual(["app:cold"], calls)
 
     def test_hook_error_does_not_block_the_launch(self) -> None:
-        import vyne.bootstrap as bm
         from vyne.runtime import Runtime
         from vyne.transport import MemoryTransport
 
@@ -72,46 +80,30 @@ class PreLaunchTests(unittest.TestCase):
             calls.append("good")
 
         runtime = Runtime(lambda: None, transport=MemoryTransport())
-        attempt = bm._RegistrationAttempt("x")
-        token = bm._registration_attempt.set(attempt)
-        try:
+        with _registration_attempt() as attempt:
             run_app(lambda: None, pre_launch=bad)
             run_app(lambda: None, pre_launch=good)
             _run_pre_launch_chain(
                 (attempt.app_hook,), runtime.build_root_context(LaunchData())
             )
-            self.assertEqual(["good"], calls)
-        finally:
-            bm._registration_attempt.reset(token)
+        self.assertEqual(["good"], calls)
 
     def test_async_hook_rejected_at_registration(self) -> None:
-        import vyne.bootstrap as bm
-
-        attempt = bm._RegistrationAttempt("x")
-        token = bm._registration_attempt.set(attempt)
-        try:
+        with _registration_attempt():
             async def async_hook(context) -> None:
                 return None
             with self.assertRaisesRegex(TypeError, "synchronous"):
                 run_app(lambda: None, pre_launch=async_hook)
-        finally:
-            bm._registration_attempt.reset(token)
 
     def test_app_registration_without_hook_clears_prior_slot(self) -> None:
-        import vyne.bootstrap as bm
-
         def old_hook(context) -> None:
             pass
 
-        attempt = bm._RegistrationAttempt("x")
-        token = bm._registration_attempt.set(attempt)
-        try:
+        with _registration_attempt() as attempt:
             run_app(lambda: None, pre_launch=old_hook)
             self.assertIs(attempt.app_hook, old_hook)
             run_app(lambda: None)  # no hook: clears the slot
             self.assertIsNone(attempt.app_hook)
-        finally:
-            bm._registration_attempt.reset(token)
 
     def test_failed_start_restores_prior_extension_tables(self) -> None:
         """A failed cold start must restore the prior contract tables."""
@@ -153,63 +145,42 @@ class PreLaunchTests(unittest.TestCase):
         self.assertIsNone(resolve_kind("Candidate"))
         self.assertIsNotNone(resolve_kind("Prior"))
 
-    def test_warm_delivery_runs_hook_then_root_update(self) -> None:
+    def test_warm_delivery_runs_hook_then_updates_root(self) -> None:
         import vyne.android as android
 
-        class RecordingRuntime:
-            root_argument_count = 1
-            pre_launch_hooks = ()
-            updates: list[LaunchData] = []
+        cases = [
+            ("runs_hook_then_root_update", 1, 1, None, {}),
+            ("zero_arg_captures_only", 0, 0, "open_order", {"order_id": 7}),
+        ]
+        for label, arg_count, expected_updates, action, extras in cases:
+            with self.subTest(case=label):
+                class RecordingRuntime:
+                    root_argument_count = arg_count
+                    pre_launch_hooks = ()
+                    updates: list = []
 
-            def build_root_context(self, launch):
-                return SimpleNamespace(launch=launch)
+                    def build_root_context(self, launch):
+                        return SimpleNamespace(launch=launch)
 
-            def update_root_arguments(self, *args) -> None:
-                self.updates.append(args[0])
+                    def update_root_arguments(self, *args) -> None:
+                        self.updates.append(args[0])
 
-        runtime = RecordingRuntime()
-        android._session = android._DirectSession(
-            host=None, runtime=runtime, transport=None, dispatcher=None
-        )
-        seen: list[str] = []
+                runtime = RecordingRuntime()
+                android._session = android._DirectSession(
+                    host=None, runtime=runtime, transport=None, dispatcher=None
+                )
+                seen: list[str] = []
 
-        def hook(context) -> None:
-            seen.append(context.launch.origin)
+                def hook(context) -> None:
+                    seen.append(context.launch.origin)
 
-        runtime.pre_launch_hooks = (hook,)
-        android.deliver_launch_direct(None, None, {}, 2)  # sequence 2 = warm
-        self.assertEqual(["warm"], seen)
-        self.assertEqual(1, len(runtime.updates))
-        self.assertEqual("warm", runtime.updates[0].launch.origin)
-
-    def test_warm_delivery_zero_arg_app_captures_only(self) -> None:
-        import vyne.android as android
-
-        class ZeroArgRuntime:
-            root_argument_count = 0
-            pre_launch_hooks = ()
-            updates: list = []
-
-            def build_root_context(self, launch):
-                return SimpleNamespace(launch=launch)
-
-            def update_root_arguments(self, *args) -> None:
-                self.updates.append(args)
-
-        runtime = ZeroArgRuntime()
-        android._session = android._DirectSession(
-            host=None, runtime=runtime, transport=None, dispatcher=None
-        )
-
-        seen: list[str] = []
-
-        def hook(context) -> None:
-            seen.append(context.launch.origin)
-
-        runtime.pre_launch_hooks = (hook,)
-        android.deliver_launch_direct("open_order", None, {"order_id": 7}, 2)
-        self.assertEqual(["warm"], seen)
-        self.assertEqual([], runtime.updates)
+                runtime.pre_launch_hooks = (hook,)
+                android.deliver_launch_direct(action, None, extras, 2)  # warm
+                self.assertEqual(["warm"], seen)
+                self.assertEqual(
+                    expected_updates, len(runtime.updates),
+                    f"{label}: expected {expected_updates} root update(s)",
+                )
 
 
 class HandlerFailureObservabilityTests(unittest.TestCase):

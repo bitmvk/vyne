@@ -3,40 +3,11 @@ from __future__ import annotations
 import asyncio
 
 from vyne import Text, state
-from vyne.events import Event
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import SilentTransport, native_listener_event
 
-class SilentTransport:
-    def __init__(self) -> None:
-        self.messages: list[dict] = []
-
-    def send(self, message: dict) -> None:
-        self.messages.append(message)
-
-    @property
-    def latest(self) -> dict:
-        return self.messages[-1]
-
-
-def listener_event(
-    transport: MemoryTransport | SilentTransport,
-    *,
-    sequence: int,
-) -> Event:
-    listener = next(
-        operation
-        for operation in transport.latest["ops"]
-        if operation["op"] == "listen"
-    )
-    return Event(
-        name=listener["event"],
-        target=listener["id"],
-        handler=listener["handler"],
-        payload={},
-        sequence=sequence,
-    )
 
 
 def test_async_event_flushes_before_and_after_await_separately() -> None:
@@ -64,7 +35,7 @@ def test_async_event_flushes_before_and_after_await_separately() -> None:
         runtime.mount()
         initial_commits = len(transport.messages)
 
-        runtime.dispatch_native_events([listener_event(transport, sequence=10)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=10)])
         await runtime._settle_async_callbacks()
 
         assert cells["loading"].value is True
@@ -102,7 +73,7 @@ def test_other_callback_commits_while_async_callback_is_waiting() -> None:
         transport = MemoryTransport()
         runtime = Runtime(App, transport=transport)
         runtime.mount()
-        runtime.dispatch_native_events([listener_event(transport, sequence=1)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=1)])
         await runtime._settle_async_callbacks()
 
         subscription = runtime.subscribe_external_callback(
@@ -140,7 +111,7 @@ def test_async_continuation_waits_behind_in_flight_commit() -> None:
         runtime.mount()
         runtime.acknowledge_native_apply(1)
 
-        runtime.dispatch_native_events([listener_event(transport, sequence=5)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=5)])
         await runtime._settle_async_callbacks()
         assert transport.latest["revision"] == 2
 
@@ -198,7 +169,7 @@ def test_async_callback_failure_rolls_back_current_turn() -> None:
         transport = MemoryTransport()
         runtime = Runtime(App, transport=transport)
         runtime.mount()
-        runtime.dispatch_native_events([listener_event(transport, sequence=2)])
+        runtime.dispatch_native_events([native_listener_event(transport, sequence=2)])
         await runtime._settle_async_callbacks()
 
         assert cells["value"].value == 0
@@ -222,7 +193,7 @@ def test_sync_dispatch_entry_point_still_runs_async_callback() -> None:
     transport = MemoryTransport()
     runtime = Runtime(App, transport=transport)
     runtime.mount()
-    runtime.dispatch_native_events([listener_event(transport, sequence=8)])
+    runtime.dispatch_native_events([native_listener_event(transport, sequence=8)])
 
     assert runtime.wait_for_async_callbacks(timeout=1)
     assert cells["value"].value == 3

@@ -17,7 +17,6 @@ import asyncio
 import logging
 
 from vyne import (
-    Button,
     Column,
     Row,
     Text,
@@ -26,6 +25,7 @@ from vyne import (
     state,
 )
 from vyne import AppContext
+from vyne_material import Button
 from timer_ring import TimerRing
 
 logging.basicConfig(level=logging.INFO)

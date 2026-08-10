@@ -41,6 +41,23 @@ class ConfigValidationTests(unittest.TestCase):
             },
         }
 
+    def _minimal_raw_with_paths(self, tmp: str):
+        """Minimal raw config with valid, existing path tables.
+
+        Package/module/version tests must supply a valid ``[paths]`` table
+        so the exact value error under test is raised instead of the
+        missing-``[paths]`` error.
+        """
+        for sub in ["site-packages", "base_project"]:
+            (Path(tmp) / sub).mkdir(parents=True, exist_ok=True)
+        return {
+            **self._minimal_raw(),
+            "paths": {
+                "package_python_dir": "site-packages",
+                "base_project_root": "base_project",
+            },
+        }
+
     # -- happy path ---------------------------------------------------------
 
     def test_valid_config_parses(self):
@@ -141,13 +158,14 @@ class ConfigValidationTests(unittest.TestCase):
                 parse_config(raw, config_path=self._cfg_path(tmp))
             self.assertIn("package", str(ctx.exception))
 
-    def test_rejects_leading_underscore_package(self):
-        raw = self._minimal_raw()
-        raw["app"]["package"] = "com._bad.app"
+    def test_rejects_leading_underscore_package_segment(self):
+        """Package segments must start with an ASCII letter."""
         with TemporaryDirectory() as tmp:
+            raw = self._minimal_raw_with_paths(tmp)
+            raw["app"]["package"] = "com._bad.app"
             with self.assertRaises(RuntimeError) as ctx:
                 parse_config(raw, config_path=self._cfg_path(tmp))
-            self.assertIn("package", str(ctx.exception))
+            self.assertIn("ASCII letter", str(ctx.exception))
 
     # -- module validation --------------------------------------------------
 

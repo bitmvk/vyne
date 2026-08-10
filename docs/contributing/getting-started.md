@@ -54,7 +54,8 @@ uv run python -m unittest discover -s tests
 | transport | `vyne/transport.py`, `vyne/direct_transport.py` |
 | animation | `vyne/animations.py`, `vyne/motion.py` |
 | schema | `vyne/spec/schema_v2.py`, `vyne/spec/model.py` |
-| material | `vyne/material/` |
+| element typing | `vyne/elements.pyi` (generated) |
+| material | `packages/vyne-material/src/vyne_material/` |
 | native host | `android/host/src/main/java/dev/vyne/` |
 | CLI | `vyne/cli/` |
 
@@ -65,9 +66,11 @@ uv run python -m unittest discover -s tests
 1. Add a `PropSpec` in `vyne/spec/schema_v2.py` (value domain, default,
    `applies_to`, `animatable`, `drop_default`).
 2. Regenerate `ElementContracts.kt` with `tools/generate_schema.py`.
-3. Add the set/reset entries in `PropertyApplicators.kt` (generic props)
+3. Regenerate the Python typing stubs with
+   `uv run python scripts/generate_schema_stubs.py` (add `--check` in CI).
+4. Add the set/reset entries in `PropertyApplicators.kt` (generic props)
    or in the widget's `ElementSpec` in `NativeWidgets.kt`.
-4. Add tests: lowering validation, wire round trip, renderer apply.
+5. Add tests: lowering validation, wire round trip, renderer apply.
 
 ### Add a primitive kind
 
@@ -84,9 +87,9 @@ no IO, no transport, no accepted-state mutation.
 
 ### Add a Material component
 
-Compose primitives in `vyne/material/components.py`. No Kotlin changes
-are needed. Components are controlled: Python owns the value; callbacks
-receive the proposed next value.
+Compose primitives in `packages/vyne-material/src/vyne_material/components.py`.
+No Kotlin changes are needed. Components are controlled: Python owns the
+value; callbacks receive the proposed next value.
 
 ### Add an extension
 

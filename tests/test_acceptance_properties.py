@@ -16,10 +16,12 @@ from vyne import (
     Box, Canvas, Column, Image, Layout, Path, Row, Scroll,
     Text, TextInput,
     Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple,
-    AnimatedValue, state,
+    state,
 )
 from vyne.runtime import RenderNode, Runtime
+from vyne.lowering import lower_element
 from vyne.transport import MemoryTransport
+from tests.support.runtime_helpers import dispatch_native_event
 from tests.support.native_model import NativeModel
 
 
@@ -114,25 +116,13 @@ class PropertyLifecycleTests(unittest.TestCase):
             op for op in runtime.latest_commit["ops"]
             if op.get("op") == "listen" and op.get("event") == "click"
         ][0]
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click_listener["id"],
-            "event": "click",
-            "handler": click_listener["handler"],
-            "payload": {},
-        })
+        dispatch_native_event(runtime, click_listener)
 
         props2 = _props_for(runtime.latest_commit, text_id)
         self.assertNotIn("background_color", props2)
 
         # Click again to re-add
-        runtime.dispatch_event({
-            "type": "event", "seq": 2,
-            "target": click_listener["id"],
-            "event": "click",
-            "handler": click_listener["handler"],
-            "payload": {},
-        })
+        dispatch_native_event(runtime, click_listener, seq=2)
 
         props3 = _props_for(runtime.latest_commit, text_id)
         self.assertEqual(props3.get("background_color"), "#00ff00")
@@ -161,13 +151,7 @@ class PropertyLifecycleTests(unittest.TestCase):
             op for op in runtime.latest_commit["ops"]
             if op.get("op") == "listen" and op.get("event") == "click"
         ][0]
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click_listener["id"],
-            "event": "click",
-            "handler": click_listener["handler"],
-            "payload": {},
-        })
+        dispatch_native_event(runtime, click_listener)
         self.assertEqual(
             _props_for(runtime.latest_commit, layout_id).get("orientation"),
             "vertical",
@@ -198,13 +182,7 @@ class PropertyLifecycleTests(unittest.TestCase):
             op for op in runtime.latest_commit["ops"]
             if op.get("op") == "listen" and op.get("event") == "click"
         ][0]
-        runtime.dispatch_event({
-            "type": "event", "seq": 1,
-            "target": click_listener["id"],
-            "event": "click",
-            "handler": click_listener["handler"],
-            "payload": {},
-        })
+        dispatch_native_event(runtime, click_listener)
 
         self.assertEqual(
             _props_for(runtime.latest_commit, text_id).get("text"), "world"
@@ -375,20 +353,12 @@ class PropertyLifecycleTests(unittest.TestCase):
 
     def test_boolean_is_not_int_for_dimensions(self):
         """True/False should not be accepted as width/height."""
-        # Current behavior: bool is int subclass, so True == 1
-        # Expected behavior: should reject
-        transport = MemoryTransport()
-        runtime = Runtime(
-            lambda: Box(width=True),
-            transport=transport,
-        )
-        runtime.mount()
-        box_id = _find_create(runtime.latest_commit, "Box")
-        props = _props_for(runtime.latest_commit, box_id)
-        # True gets serialized as True (bool), which should be rejected
-        # Current code may accept it since bool is subclass of int
-        if "width" in props:
-            self.assertIsInstance(props["width"], (int, float))
+        # bool is an int subclass, so the dimension domain must reject it
+        # explicitly rather than letting 1/0 pass through.
+        with self.assertRaisesRegex(TypeError, r"width must be str \| int \| float"):
+            lower_element(Box(width=True))
+        with self.assertRaisesRegex(TypeError, r"height must be str \| int \| float"):
+            lower_element(Box(height=False))
 
     # ----------------------------------------------------------------
     # Style/Decoration lowering (MODEL-02)
@@ -424,34 +394,6 @@ class PropertyLifecycleTests(unittest.TestCase):
         self.assertIn("Error:", str(runtime.latest_commit))
 
     # ----------------------------------------------------------------
-    # AnimatedValue serialization
-    # ----------------------------------------------------------------
-
-    def test_animated_value_serializes_as_protocol_marker(self):
-        """AnimatedValue props serialize with the __vyne_animated_value__ marker."""
-        transport = MemoryTransport()
-        runtime = Runtime(
-            lambda: Box(opacity=AnimatedValue(0.5, duration=100)),
-            transport=transport,
-        )
-        runtime.mount()
-
-        box_id = _find_create(runtime.latest_commit, "Box")
-        opacity = _props_for(runtime.latest_commit, box_id).get("opacity")
-        from collections.abc import Mapping
-        self.assertIsInstance(opacity, Mapping)
-        self.assertTrue(opacity.get("__vyne_animated_value__"))
-
-    def test_non_animatable_props_reject_animated_value(self):
-        """AnimatedValue on non-animatable prop should fail."""
-        bad = Runtime(
-            lambda: Text(text=AnimatedValue(1.0)),
-            transport=MemoryTransport(),
-        )
-        bad.mount()
-        self.assertIsNone(bad._coordinator.accepted_root)
-
-    # ----------------------------------------------------------------
     # Kind-specific generic prop applicability
     # ----------------------------------------------------------------
 
@@ -468,23 +410,10 @@ class PropertyLifecycleTests(unittest.TestCase):
         props = _props_for(runtime.latest_commit, text_id)
         self.assertEqual(props.get("lp_weight"), 1.0)
 
-    def test_lp_gravity_is_accepted(self):
-        """lp_gravity is serialized."""
-        transport = MemoryTransport()
-        runtime = Runtime(
-            lambda: Box(lp_gravity="center"),
-            transport=transport,
-        )
-        runtime.mount()
-
-        box_id = _find_create(runtime.latest_commit, "Box")
-        props = _props_for(runtime.latest_commit, box_id)
-        self.assertEqual(props.get("lp_gravity"), "center")
-        self.assertEqual(props.get("lp_gravity"), "center")
-
-    def test_lp_gravity_accepts_overlay_positions_used_by_material(self):
-        """Badges, sheets, and tab indicators can use Android gravity slots."""
+    def test_lp_gravity_accepts_serialized_positions(self):
+        """lp_gravity is serialized, including overlay slots used by Material."""
         for gravity in (
+            "center",
             "top",
             "bottom",
             "center_horizontal",

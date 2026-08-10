@@ -5,13 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
-from vyne.animations import AnimatedValue
 from vyne.elements import Box, Canvas, Column, Element, Row, Text
-from vyne.material._callbacks import CallbackAdapter, prepare_handler
-from vyne.material._geometry import progress_path as _progress_path
-from vyne.material._geometry import wavy_path as _wavy_path
-from vyne.material._validation import alpha
-from vyne.material.theme import MaterialTheme, TypeStyle
+from vyne_material._callbacks import CallbackAdapter, prepare_handler
+from vyne_material._geometry import progress_path as _progress_path
+from vyne_material._geometry import wavy_path as _wavy_path
+from vyne_material._validation import alpha
+from vyne_material.theme import MaterialTheme, TypeStyle
 
 
 Callback = Callable[..., Any]
@@ -223,24 +222,14 @@ def switch_canvas(
         if enabled
         else alpha(colors.on_surface, 0.38)
     )
-    # Python owns the Material geometry and motion choice. The native Canvas
-    # only integrates this generic spring between declarative numeric targets.
+    # Python owns the Material geometry. The thumb snaps to the checked
+    # (36/24) or unchecked (16/12) target position. A declarative Canvas
+    # target animation is intentionally not used here: the supported
+    # animation APIs are imperative and require a mounted view.
     target_radius = 12 if checked else 8
     target_cx = 36 if checked else 16
-    radius = AnimatedValue(
-        target_radius,
-        duration=400,
-        easing="spring",
-        damping_ratio=0.6,
-        stiffness=800,
-    )
-    cx = AnimatedValue(
-        target_cx,
-        duration=400,
-        easing="spring",
-        damping_ratio=0.6,
-        stiffness=800,
-    )
+    radius = target_radius
+    cx = target_cx
     draw = [
         {
             "kind": "round_rect",

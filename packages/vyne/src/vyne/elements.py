@@ -13,33 +13,26 @@ Key design decisions:
   by the Runtime via ``_split_props``.  They are not sent as data props.
 - ``normalize_children`` flattens nested lists/tuples and converts scalars
   (str/int/float/bool) into Text elements, so users can write natural
-  child expressions like ``Box("Hello", [Text("world")])``.
+  child expressions like ``Box("Hello", [Text(text="world")])``.
 - Path data strings and Canvas draw lists are compiled at Element creation
   time (not render time) to fail-fast on malformed input.
 - Element has no runtime identity fields (no ``_view_id``, no ``_validated``).
   Runtime identity lives exclusively on ``RenderNode``.  Each occurrence gets
   an independent RenderNode, including duplicate/cross-runtime reuse of the
   same Element object.
+
+Precise per-constructor typing lives in the generated ``elements.pyi``
+(regenerated from ``vyne.spec.schema_v2`` by
+``scripts/generate_schema_stubs.py``).  This module keeps runtime
+annotations loose so no generated metadata is imported at runtime.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Unpack
+from typing import Any
 
-from vyne.params import (
-    BoxProps,
-    CanvasProps,
-    ColumnProps,
-    ImageProps,
-    LayoutProps,
-    PathProps,
-    RowProps,
-    ScrollProps,
-    TextInputProps,
-    TextProps,
-)
 from vyne.protocol import (
     ensure_bridge_value,
 )
@@ -129,23 +122,23 @@ def _widget(kind: str, *children: Any, **props: Any) -> Element:
     return Element(kind, normalized_props, normalize_children(children))
 
 
-def Box(*children: Any, **props: Unpack[BoxProps]) -> Element:
+def Box(*children: Any, **props: Any) -> Element:
     return _widget("Box", *children, **props)
 
 
-def Layout(*children: Any, **props: Unpack[LayoutProps]) -> Element:
+def Layout(*children: Any, **props: Any) -> Element:
     return _widget("Layout", *children, **props)
 
 
-def Row(*children: Any, **props: Unpack[RowProps]) -> Element:
+def Row(*children: Any, **props: Any) -> Element:
     return _widget("Layout", *children, orientation="horizontal", **props)
 
 
-def Column(*children: Any, **props: Unpack[ColumnProps]) -> Element:
+def Column(*children: Any, **props: Any) -> Element:
     return _widget("Layout", *children, orientation="vertical", **props)
 
 
-def Scroll(*children: Any, **props: Unpack[ScrollProps]) -> Element:
+def Scroll(*children: Any, **props: Any) -> Element:
     """A vertical scrollable container.
 
     Android ScrollView can only host a single child, so multiple children
@@ -159,7 +152,7 @@ def Scroll(*children: Any, **props: Unpack[ScrollProps]) -> Element:
 
 def _horizontal_scroll(
     *children: Any,
-    **props: Unpack[ScrollProps],
+    **props: Any,
 ) -> Element:
     """Private horizontal scroll primitive used by internal controllers."""
     normalized = normalize_children(children)
@@ -168,19 +161,19 @@ def _horizontal_scroll(
     return _widget("HorizontalScroll", *normalized, **props)
 
 
-def Text(**props: Unpack[TextProps]) -> Element:
+def Text(**props: Any) -> Element:
     return _widget("Text", **props)
 
 
-def TextInput(**props: Unpack[TextInputProps]) -> Element:
+def TextInput(**props: Any) -> Element:
     return _widget("TextInput", **props)
 
 
-def Image(**props: Unpack[ImageProps]) -> Element:
+def Image(**props: Any) -> Element:
     return _widget("Image", **props)
 
 
-def Path(**props: Unpack[PathProps]) -> Element:
+def Path(**props: Any) -> Element:
     """An SVG-path-backed vector shape.
 
     The ``d`` attribute is compiled at creation time into a list of JSON-safe
@@ -194,7 +187,7 @@ def Path(**props: Unpack[PathProps]) -> Element:
     return _widget("Path", **normalized)
 
 
-def Canvas(**props: Unpack[CanvasProps]) -> Element:
+def Canvas(**props: Any) -> Element:
     """A declarative 2D drawing surface.
 
     The ``draw`` list describes drawing operations (round_rect, path, etc.)

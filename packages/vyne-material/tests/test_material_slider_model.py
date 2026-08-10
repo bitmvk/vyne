@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from vyne.material._validation import (
+from vyne_material._validation import (
     SliderSpec,
     slider_targets,
 )

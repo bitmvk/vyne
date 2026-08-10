@@ -534,7 +534,9 @@ def validate_canvas_draw_ops(ops: Any, *, path: str = "draw") -> None:
     """Validate a sequence of Canvas draw operation dicts against CANVAS_OP_SPECS.
 
     Each operation must have a recognised ``kind`` and fields that conform
-    to the corresponding CanvasOpSpec.
+    to the corresponding CanvasOpSpec.  The canonical ``draw`` value domain
+    accepts both a list (the public constructor input) and a tuple (the
+    frozen canonical storage form); both are validated here.
     """
     if not isinstance(ops, (list, tuple)):
         raise TypeError(f"{path} must be a list or tuple, got {type(ops).__name__}")
@@ -691,6 +693,9 @@ EVENT_SPECS: dict[str, EventSpec] = {
     # Internal renderer observations used by the Python-owned virtual-list
     # controller. These names are protocol contracts, not a finalized public
     # list API. Kotlin reports mechanics; Python owns all window policy.
+    # ``public_callback=False`` keeps them off the generated constructor
+    # typing surface while preserving wire behavior and per-kind
+    # applicability.
     "layout_metrics": EventSpec(
         name="layout_metrics",
         payload_fields=frozenset(_LAYOUT_METRICS_PAYLOAD_SPECS),
@@ -699,6 +704,7 @@ EVENT_SPECS: dict[str, EventSpec] = {
         ),
         payload_specs=_LAYOUT_METRICS_PAYLOAD_SPECS,
         payload_wire_names={name: name for name in _LAYOUT_METRICS_PAYLOAD_SPECS},
+        public_callback=False,
     ),
     "scroll_metrics": EventSpec(
         name="scroll_metrics",
@@ -706,6 +712,7 @@ EVENT_SPECS: dict[str, EventSpec] = {
         applies_to=frozenset({"Scroll", "HorizontalScroll"}),
         payload_specs=_SCROLL_METRICS_PAYLOAD_SPECS,
         payload_wire_names={name: name for name in _SCROLL_METRICS_PAYLOAD_SPECS},
+        public_callback=False,
     ),
 }
 

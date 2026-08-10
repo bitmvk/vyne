@@ -1,6 +1,6 @@
 """Caveat tests for the event system and per-mount refs.
 
-EventRegistry's two-generation GC, zero-arg handler wrapping, delivery
+EventRegistry handler mapping, zero-arg handler wrapping, delivery
 policies, Event construction from wire messages, and the Ref/ViewHandle
 lifecycle contract.
 """
@@ -98,30 +98,11 @@ class EventRegistryTests(unittest.TestCase):
             registry.dispatch(Event(name="click", target=1, handler=999,
                                     payload={}))
 
-    def test_end_render_garbage_collects_unseen_handlers(self):
-        registry = EventRegistry()
-        keep = registry.register(lambda e: None)
-        drop = registry.register(lambda e: None)
-        registry.begin_render()
-        registry.retain(keep)
-        registry.end_render()
-        self.assertIn(keep, registry.handler_ids)
-        self.assertNotIn(drop, registry.handler_ids)
-
-    def test_begin_render_preserve_existing_keeps_all(self):
-        registry = EventRegistry()
-        first = registry.register(lambda e: None)
-        registry.begin_render(preserve_existing=True)
-        registry.end_render()
-        self.assertIn(first, registry.handler_ids)
-
-    def test_update_refreshes_closure_and_marks_seen(self):
+    def test_update_refreshes_closure(self):
         registry = EventRegistry()
         values: list[int] = []
         handler_id = registry.register(lambda e: values.append(1))
-        registry.begin_render()
         registry.update(handler_id, lambda e: values.append(2))
-        registry.end_render()
         registry.dispatch(Event(name="click", target=1, handler=handler_id,
                                 payload={}))
         self.assertEqual(values, [2])
@@ -152,7 +133,6 @@ class EventRegistryTests(unittest.TestCase):
         clone = registry.clone()
         # Same handler ids and next id, but updates stay local.
         self.assertEqual(clone.handler_ids, registry.handler_ids)
-        self.assertEqual(clone.next_handler_id, registry.next_handler_id)
         clone.update(handler_id, lambda e: 2)
         original_event = Event(name="click", target=1, handler=handler_id,
                                payload={})

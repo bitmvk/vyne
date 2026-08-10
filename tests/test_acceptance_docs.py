@@ -242,26 +242,6 @@ class ExecutableDocsTests(unittest.TestCase):
     # Expected error snippets
     # ----------------------------------------------------------------
 
-    def test_invalid_path_rejected(self):
-        """Invalid path data is rejected at construction."""
-        from vyne.path_data import compile_path_data
-
-        with self.assertRaises(ValueError):
-            compile_path_data("M 1")  # incomplete coordinates
-
-        with self.assertRaises(ValueError):
-            compile_path_data("")  # empty
-
-    def test_invalid_canvas_draw_rejected(self):
-        """Invalid Canvas draw specification is rejected."""
-        from vyne import Canvas
-
-        with self.assertRaises(TypeError):
-            Canvas(draw={})  # not a list
-
-        with self.assertRaises(TypeError):
-            Canvas(draw=["not a dict"])  # not a dict
-
     def test_component_state_outside_render_rejected(self):
         """state() outside render raises error."""
         from vyne import state

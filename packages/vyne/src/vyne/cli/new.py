@@ -16,18 +16,24 @@ is fully rolled back.
 from __future__ import annotations
 
 import json
-import keyword
 from pathlib import Path
 import re
 
-from vyne.cli._templates import (
-    ANDROID_MANIFEST,
-    APP_BUILD_GRADLE,
-    GRADLE_PROPERTIES,
-    ROOT_BUILD_GRADLE,
-    SETTINGS_GRADLE,
+from vyne.cli.config import (
+    _DEFAULT_COMPILE_SDK,
+    _DEFAULT_MIN_SDK,
+    _DEFAULT_TARGET_SDK,
+    _DEFAULT_VERSION,
+    _DEFAULT_VERSION_CODE,
+    is_reserved_identifier,
+    parse_config,
+    validate_module,
+    validate_package,
 )
-from vyne.cli.dependencies import ensure_vyne_dependency
+from vyne.cli.dependencies import (
+    _has_dependency,
+    ensure_vyne_dependency,
+)
 from vyne.cli.generation import (
     ConflictPolicy,
     PlanBuilder,
@@ -37,56 +43,7 @@ from vyne.cli.project import (
     checkout_root_from_package,
     package_python_dir_from_package,
 )
-
-ANDROID_RESERVED_WORDS = {
-    "abstract",
-    "as",
-    "assert",
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "default",
-    "do",
-    "else",
-    "enum",
-    "extends",
-    "false",
-    "final",
-    "finally",
-    "for",
-    "fun",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "interface",
-    "is",
-    "new",
-    "null",
-    "object",
-    "override",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "static",
-    "super",
-    "switch",
-    "this",
-    "throw",
-    "throws",
-    "true",
-    "try",
-    "val",
-    "var",
-    "void",
-    "when",
-    "while",
-}
+from vyne.cli.templates import load
 
 
 def create_project(
@@ -107,7 +64,7 @@ def create_project(
     target = target.expanduser().resolve()
     if target.exists() and not target.is_dir():
         raise RuntimeError(f"{target} exists and is not a directory")
-    _validate_module(module)
+    validate_module(module)
 
     checkout_root = checkout_root_from_package()
     package_python_dir = package_python_dir_from_package().resolve()
@@ -115,7 +72,7 @@ def create_project(
     app_name = target.name
     app_label = label or _label_from_name(app_name)
     app_package = package or _default_package(app_name)
-    _validate_package(app_package)
+    validate_package(app_package)
     source_file = f"{module}.py"
 
     same_policy = ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR
@@ -190,7 +147,7 @@ def _plan_pyproject(
 
     # Add the dependency preserving structure and comments.
     # This is an intentional modification, so we always replace.
-    transformed = _add_dependency(content, dependency)
+    transformed = ensure_vyne_dependency(content, dependency)
     builder.add_file(
         "pyproject.toml",
         transformed,
@@ -210,27 +167,29 @@ def _plan_android_project(
 
     builder.add_file(
         "android/settings.gradle.kts",
-        _settings_gradle(app_name, base_project_root),
+        load("settings.gradle.kts").replace(
+            "{nameLiteral}", _kotlin_string(app_name)
+        ),
         policy=same_policy,
     )
     builder.add_file(
         "android/build.gradle.kts",
-        _root_build_gradle(),
+        load("root-build.gradle.kts"),
         policy=same_policy,
     )
     builder.add_file(
         "android/gradle.properties",
-        _gradle_properties(),
+        load("gradle.properties"),
         policy=same_policy,
     )
     builder.add_file(
         "android/app/build.gradle.kts",
-        _app_build_gradle(),
+        load("app-build.gradle.kts"),
         policy=same_policy,
     )
     builder.add_file(
         "android/app/src/main/AndroidManifest.xml",
-        _android_manifest(),
+        load("AndroidManifest.xml"),
         policy=same_policy,
     )
 
@@ -306,36 +265,42 @@ def _default_package(name: str) -> str:
     for segment in raw_segments:
         if not segment:
             continue
-        if not segment[0].isalpha() or _is_reserved_identifier(segment):
+        if not segment[0].isalpha() or is_reserved_identifier(segment):
             segment = f"app{segment}"
         segments.append(segment)
     return "com.example." + (".".join(segments) if segments else "app")
 
 
-def _validate_module(module: str) -> None:
-    """Ensure the module name is a valid Python import identifier."""
-    if not module.isidentifier() or keyword.iskeyword(module):
-        raise RuntimeError("module must be a valid Python identifier, for example app")
-
-
-def _validate_package(package: str) -> None:
-    """Ensure the Android application ID is valid (dot-separated, no reserved words)."""
-    segments = package.split(".")
-    if len(segments) < 2 or any(
-        not segment.isidentifier() or _is_reserved_identifier(segment)
-        for segment in segments
-    ):
-        raise RuntimeError(
-            "package must be a valid Android application id, for example com.example.app"
-        )
-
-
-def _is_reserved_identifier(value: str) -> bool:
-    return keyword.iskeyword(value) or value in ANDROID_RESERVED_WORDS
-
-
 def _quote(value: str) -> str:
     return json.dumps(value)
+
+
+def _kotlin_string(value: str) -> str:
+    """Return *value* as a valid Kotlin double-quoted string literal.
+
+    Escapes backslashes, double quotes, dollar signs, and every control
+    character (the C0 range ``\\u0000``-``\\u001F`` plus DEL) so a target
+    directory name cannot inject invalid or behavior-changing syntax into
+    the generated ``settings.gradle.kts``.  Newline, carriage return, and
+    tab use the named Kotlin escapes; the remaining control characters use
+    ``\\uXXXX`` Unicode escapes (valid Kotlin string escapes).  Backslashes
+    are escaped first so later escapes stay unambiguous.
+    """
+    escaped = value.replace("\\", "\\\\")
+    escaped = escaped.replace('"', '\\"')
+    escaped = escaped.replace("$", "\\$")
+    escaped = escaped.replace("\n", "\\n")
+    escaped = escaped.replace("\r", "\\r")
+    escaped = escaped.replace("\t", "\\t")
+
+    def _escape(char: str) -> str:
+        code = ord(char)
+        if code < 0x20 or code == 0x7F:
+            return f"\\u{code:04X}"
+        return char
+
+    escaped = "".join(_escape(char) for char in escaped)
+    return f'"{escaped}"'
 
 
 def _project_config(
@@ -362,13 +327,13 @@ label = {_quote(label)}
 package = {_quote(package)}
 module = {_quote(module)}
 source = {_quote(source)}
-version = "0.1.0"
-version_code = 1
+version = {_quote(_DEFAULT_VERSION)}
+version_code = {_DEFAULT_VERSION_CODE}
 
 [android]
-min_sdk = 26
-target_sdk = 35
-compile_sdk = 35
+min_sdk = {_DEFAULT_MIN_SDK}
+target_sdk = {_DEFAULT_TARGET_SDK}
+compile_sdk = {_DEFAULT_COMPILE_SDK}
 
 [paths]
 package_python_dir = {_quote(package_python_dir.as_posix())}
@@ -395,27 +360,6 @@ dependencies = [{_quote(dependency)}]
 [tool.uv]
 package = false
 """
-
-
-def _has_dependency(content: str) -> bool:
-    """Return True if *content* already contains a Vyne PEP 508 requirement.
-
-    Uses the canonical tomlkit+packaging implementation in
-    ``vyne.cli.dependencies``.
-    """
-    from vyne.cli.dependencies import _has_dependency as _check
-    return _check(content)
-
-
-def _add_dependency(content: str, dependency: str) -> str:
-    """Insert *dependency* into ``[project].dependencies`` using a
-    structure-preserving round-tripping TOML document.
-
-    Uses ``vyne.cli.dependencies.ensure_vyne_dependency`` so that
-    comments, multiline arrays, trailing commas, tool tables, and
-    unrelated content are preserved.
-    """
-    return ensure_vyne_dependency(content, dependency)
 
 
 def _app_py(label: str) -> str:
@@ -467,37 +411,12 @@ class AppTests(unittest.TestCase):
 '''
 
 
-def _settings_gradle(name: str, base_project_root: Path) -> str:
-    result = SETTINGS_GRADLE
-    result = result.replace("{name}", name)
-    return result
-
-
-def _root_build_gradle() -> str:
-    return ROOT_BUILD_GRADLE
-
-
-def _gradle_properties() -> str:
-    return GRADLE_PROPERTIES
-
-
-def _app_build_gradle() -> str:
-    return APP_BUILD_GRADLE
-
-
-def _android_manifest() -> str:
-    return ANDROID_MANIFEST
-
-
 def _validate_generated_config(vyne_toml_content: str, target: Path) -> None:
-    """Re-parse the generated ``vyne.toml`` content through TOML and
-    structural validation, ensuring the generated config is structurally
-    valid before any files are placed.
+    """Re-parse the generated ``vyne.toml`` through the single config
+    validator, ensuring it is structurally valid before any files are placed.
 
-    Does NOT require that path references exist (they may be created later
-    or point to pre-existing framework directories).  Raises
-    ``RuntimeError`` if the config is malformed TOML, has wrong types,
-    or violates SDK/ABI/package/version constraints.
+    ``check_paths=False`` skips directory-existence checks: paths may be
+    created during placement or point to pre-existing framework directories.
     """
     import tomllib
     try:
@@ -506,81 +425,4 @@ def _validate_generated_config(vyne_toml_content: str, target: Path) -> None:
         raise RuntimeError(
             f"Generated vyne.toml is not valid TOML: {exc}"
         ) from exc
-    # Structural validation: types, ranges, package/module patterns,
-    # SDK ordering, ABI membership, PEP 440 version.  Path existence
-    # is NOT enforced here since paths may reference directories that
-    # are created later or that live outside the target tree.
-    _validate_config_structure(raw)
-
-
-def _validate_config_structure(raw: dict) -> None:
-    """Validate config structure without path-existence checks.
-
-    Used during generation to ensure the generated config is coherent
-    before placement.  Full path validation happens in ``parse_config``
-    at load time.
-    """
-    from vyne.cli.config import (
-        _exact_int, _exact_str,
-        _validate_package, _validate_module, _validate_pep440,
-        _MIN_SDK_MINIMUM,
-    )
-
-    # [app] table
-    app_table = raw.get("app", {})
-    if not isinstance(app_table, dict):
-        raise RuntimeError("[app] in vyne.toml must be a table")
-    name = _exact_str(app_table, "name", "[app].name")
-    if not name:
-        raise RuntimeError("[app].name must be a non-empty string")
-    _exact_str(app_table, "label", "[app].label", default=name)
-    package = _exact_str(app_table, "package", "[app].package", default="com.example.app")
-    _validate_package(package)
-    module = _exact_str(app_table, "module", "[app].module", default="app")
-    _validate_module(module)
-    source = _exact_str(app_table, "source", "[app].source", default="app.py")
-    if not source:
-        raise RuntimeError("[app].source must be a non-empty string")
-    version = _exact_str(app_table, "version", "[app].version", default="0.1.0")
-    _validate_pep440(version, "[app].version")
-    version_code = _exact_int(app_table, "version_code", "[app].version_code", default=1)
-    if not (1 <= version_code <= 2_100_000_000):
-        raise RuntimeError(
-            f"[app].version_code must be between 1 and 2_100_000_000, got {version_code}"
-        )
-
-    # [android] table
-    android_table = raw.get("android", {})
-    if not isinstance(android_table, dict):
-        raise RuntimeError("[android] in vyne.toml must be a table")
-    min_sdk = _exact_int(android_table, "min_sdk", "[android].min_sdk", default=26)
-    target_sdk = _exact_int(android_table, "target_sdk", "[android].target_sdk", default=35)
-    compile_sdk = _exact_int(android_table, "compile_sdk", "[android].compile_sdk", default=35)
-    if min_sdk < _MIN_SDK_MINIMUM:
-        raise RuntimeError(
-            f"[android].min_sdk must be >= {_MIN_SDK_MINIMUM}, got {min_sdk}"
-        )
-    if not (min_sdk <= target_sdk <= compile_sdk):
-        raise RuntimeError(
-            f"[android] SDK ordering violated: "
-            f"min_sdk({min_sdk}) <= target_sdk({target_sdk}) <= "
-            f"compile_sdk({compile_sdk})"
-        )
-    # [paths] table — require keys to be present and be strings,
-    # but do not require the paths to exist on disk yet.
-    paths_table = raw.get("paths", {})
-    if not isinstance(paths_table, dict):
-        raise RuntimeError("[paths] in vyne.toml must be a table")
-    for key in ("package_python_dir", "base_project_root"):
-        val = paths_table.get(key)
-        if val is None:
-            raise RuntimeError(f"[paths].{key} is required")
-        if not isinstance(val, str):
-            raise RuntimeError(
-                f"[paths].{key} must be a string, got {type(val).__name__}"
-            )
-
-    # [framework] table is optional
-    framework_table = raw.get("framework", {})
-    if framework_table is not None and not isinstance(framework_table, dict):
-        raise RuntimeError("[framework] in vyne.toml must be a table")
+    parse_config(raw, config_path=target / "vyne.toml", check_paths=False)

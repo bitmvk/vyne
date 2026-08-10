@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.material._validation import (
+from vyne_material._validation import (
     alpha,
     resolve_ripple_color,
 )
-from vyne.material.theme import DEFAULT_THEME
+from vyne_material.theme import DEFAULT_THEME
 
 
 class CanonicalColorTests(unittest.TestCase):
@@ -72,7 +72,7 @@ class SnackbarInverseColorsTests(unittest.TestCase):
     """MAT-11: Snackbar uses complete inverse color palette."""
 
     def test_snackbar_uses_inverse_surface(self):
-        from vyne.material import Snackbar
+        from vyne_material import Snackbar
         snackbar = Snackbar("Test")
         self.assertEqual(
             snackbar.props["background_color"],
@@ -80,7 +80,7 @@ class SnackbarInverseColorsTests(unittest.TestCase):
         )
 
     def test_snackbar_text_uses_inverse_on_surface(self):
-        from vyne.material import Snackbar
+        from vyne_material import Snackbar
         snackbar = Snackbar("Test")
         # Snackbar is a Row (Layout). The text is the first non-spacer child.
         text_children = [
@@ -94,7 +94,7 @@ class SnackbarInverseColorsTests(unittest.TestCase):
         )
 
     def test_snackbar_action_button_uses_inverse_primary(self):
-        from vyne.material import Snackbar
+        from vyne_material import Snackbar
         snackbar = Snackbar("Test", action_label="Undo")
         # The Button with variant="text" and inverse theme lowers to Layout + Text.
         # Find the Layout that has a Text child with the action label.
@@ -117,12 +117,12 @@ class FABBaseColorsTests(unittest.TestCase):
     """MAT-11: Base FAB colors remain exact after canonical color migration."""
 
     def test_fab_enabled_has_container_color(self):
-        from vyne.material import FloatingActionButton
+        from vyne_material import FloatingActionButton
         fab = FloatingActionButton("+")
         self.assertTrue(fab.props["background_color"].startswith("#"))
 
     def test_fab_disabled_has_alpha_colors(self):
-        from vyne.material import FloatingActionButton
+        from vyne_material import FloatingActionButton
         fab = FloatingActionButton("+", enabled=False)
         self.assertTrue(fab.props["background_color"].startswith("#"))
         # Disabled FAB should have no click handler

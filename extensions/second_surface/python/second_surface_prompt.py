@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 
-from vyne import Box, Button, Column, Row, Text, run_app, state
+from vyne import Box, Column, Row, Text, run_app, state
 from vyne.elements import Element
+from vyne_material import Button
 
 _logger = logging.getLogger("vyne.ext.second_surface_prompt")
 

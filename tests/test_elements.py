@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 from vyne import (
-    AnimatedValue,
     Box,
     Canvas,
     Column,
@@ -22,54 +21,6 @@ from vyne.elements import event_name_for_prop, normalize_child
 
 
 class ElementTests(unittest.TestCase):
-    def test_animated_value_encodes_a_generic_parameterized_spring(self):
-        value = AnimatedValue(
-            24,
-            duration=400,
-            easing="spring",
-            damping_ratio=0.6,
-            stiffness=800,
-        )
-
-        self.assertEqual(
-            value.to_protocol_value(),
-            {
-                "__vyne_animated_value__": True,
-                "value": 24.0,
-                "duration": 400,
-                "easing": "spring",
-                "retarget": "maintain_velocity",
-                "damping_ratio": 0.6,
-                "stiffness": 800.0,
-            },
-        )
-
-    def test_animated_value_arithmetic_lowers_inside_canvas_draw(self):
-        position = AnimatedValue(0.25, duration=48, easing="linear")
-        canvas = Canvas(
-            draw=[
-                {
-                    "kind": "circle",
-                    "cx": 10 + position * 200,
-                    "cy": 20,
-                    "r": (position * 40).clamp(4, 12),
-                }
-            ]
-        )
-
-        circle = canvas.props["draw"][0]
-        self.assertEqual(
-            circle["cx"],
-            {
-                "__vyne_animated_value__": True,
-                "value": 60.0,
-                "duration": 48,
-                "easing": "linear",
-                "retarget": "restart",
-            },
-        )
-        self.assertEqual(circle["r"]["value"], 10.0)
-
     def test_nested_children_and_scalars_are_normalized(self):
         element = Box("hello", [None, 2, (True, Text(text="nested"))])
 

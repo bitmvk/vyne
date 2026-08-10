@@ -1,12 +1,11 @@
 """Framework-side event objects and handler registry.
 
-The EventRegistry maintains a two-generation handler table:
-- ``begin_render()`` clears the "active this render" set.
-- ``register()`` / ``update()`` add handlers and mark them as seen.
-- ``end_render()`` removes handlers not seen in this render (garbage collection).
-
-This ensures that when a user removes an ``on_click`` handler from their tree,
-the old handler ID is freed and won't fire on stale events.
+The EventRegistry maps protocol-safe handler IDs to Python callbacks.
+Handler garbage collection is owned by the Runtime: candidate registries
+are detached copies (``clone()``) and handler IDs whose listeners left
+the accepted tree are unregistered during promotion.  When a user removes
+an ``on_click`` handler from their tree, the old handler ID is freed and
+won't fire on stale events.
 
 Event handler wrapping: zero-argument handlers (``on_click=lambda: ...``) are
 wrapped automatically so users don't need to accept an unused event parameter.
@@ -85,33 +84,24 @@ class Event:
 
 
 class EventRegistry:
-    """Maps protocol-safe handler IDs to Python callbacks."""
+    """Maps protocol-safe handler IDs to Python callbacks.
+
+    Candidate registries are detached copies created by ``clone()``;
+    handler garbage collection is owned by the Runtime, which unregisters
+    handler IDs whose listeners left the accepted tree.
+    """
 
     def __init__(self) -> None:
         self._next_handler_id = 1
         self._handlers: dict[int, Callable[..., Any]] = {}
-        self._active_this_render: set[int] = set()
-
-    def begin_render(self, *, preserve_existing: bool = False) -> None:
-        if preserve_existing:
-            self._active_this_render = set(self._handlers)
-        else:
-            self._active_this_render.clear()
-
-    def retain(self, handler_id: int) -> None:
-        """Keep an unchanged handler alive through the current render."""
-        if handler_id in self._handlers:
-            self._active_this_render.add(handler_id)
 
     def unregister(self, handler_id: int) -> None:
         """Remove a handler whose listener or native subtree was removed."""
         self._handlers.pop(handler_id, None)
-        self._active_this_render.discard(handler_id)
 
     def clear(self) -> None:
         """Remove all registered handlers and reset ID counter."""
         self._handlers.clear()
-        self._active_this_render.clear()
         self._next_handler_id = 1
 
     def clone(self) -> "EventRegistry":
@@ -119,12 +109,7 @@ class EventRegistry:
         candidate = EventRegistry()
         candidate._next_handler_id = self._next_handler_id
         candidate._handlers = dict(self._handlers)
-        candidate._active_this_render = set(self._handlers)
         return candidate
-
-    @property
-    def next_handler_id(self) -> int:
-        return self._next_handler_id
 
     @property
     def handler_ids(self) -> frozenset[int]:
@@ -136,19 +121,12 @@ class EventRegistry:
         handler_id = self._next_handler_id
         self._next_handler_id += 1
         self._handlers[handler_id] = _wrap_handler(callback)
-        self._active_this_render.add(handler_id)
         return handler_id
 
     def update(self, handler_id: int, callback: Callable[..., Any]) -> None:
         if not callable(callback):
             raise TypeError("Event handlers must be callable")
         self._handlers[handler_id] = _wrap_handler(callback)
-        self._active_this_render.add(handler_id)
-
-    def end_render(self) -> None:
-        for handler_id in tuple(self._handlers):
-            if handler_id not in self._active_this_render:
-                del self._handlers[handler_id]
 
     def dispatch(self, event: Event) -> Any:
         handler = self._handlers.get(event.handler)

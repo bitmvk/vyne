@@ -8,15 +8,9 @@ from vyne import AppContext, LaunchData, Text, state
 from vyne.bootstrap import _accepts_context, _start_registered_app
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
+
+from tests.support.runtime_helpers import SilentTransport
 from vyne.values import FrozenMap
-
-
-class SilentTransport:
-    def __init__(self) -> None:
-        self.messages: list[dict] = []
-
-    def send(self, message: dict) -> None:
-        self.messages.append(message)
 
 
 def test_launch_data_is_deeply_immutable() -> None:

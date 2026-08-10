@@ -8,23 +8,45 @@ defaults, and animated-value rejection.
 from __future__ import annotations
 
 import unittest
+from weakref import ref as weakref
 
-from vyne.animations import AnimatedValue
+from vyne.animations import AnimatedNode, encode_animated_values
 from vyne.elements import Element
-from vyne.extensions_registry import sync_from_host
 from vyne.lowering import lower_element
 
-KINDS = {
-    "TimerRing": (["progress", "ring_color"], ["complete"], [False]),
-}
+from tests.support.extension_kinds import (
+    KINDS,
+    activate_extension_kinds,
+    deactivate_extension_kinds,
+)
+
+
+class _RuntimeStub:
+    """Weakref-able stand-in for the Runtime owner of an AnimatedNode."""
+
+
+def _animated_node(initial: float) -> dict[str, object]:
+    """Lower a real AnimatedNode through the production encoding path.
+
+    The lowering gate inspects the encoded marker, so the fixture must
+    exercise ``encode_animated_values`` rather than a hand-rolled payload:
+    if the marker shape drifts, these tests fail.
+    """
+    node = AnimatedNode(
+        {"op": "value", "driver_id": 1, "initial": initial},
+        runtime=weakref(_RuntimeStub()),
+        driver_ids=frozenset({1}),
+        initial=initial,
+    )
+    return encode_animated_values(node)
 
 
 def setUpModule() -> None:
-    sync_from_host(KINDS)
+    activate_extension_kinds()
 
 
 def tearDownModule() -> None:
-    sync_from_host({})
+    deactivate_extension_kinds()
 
 
 def _ring(**props) -> Element:
@@ -70,13 +92,13 @@ class ExtensionLoweringTests(unittest.TestCase):
 
     def test_animated_value_rejected_on_extension_prop(self):
         with self.assertRaisesRegex(ValueError, "animatable"):
-            lower_element(_ring(progress=AnimatedValue(0.5)))
+            lower_element(_ring(progress=_animated_node(0.5)))
 
     def test_animated_value_accepted_on_generic_prop_of_extension_kind(self):
         # Generic core props (width, opacity, ...) are animatable on every
         # kind — the animation machinery is name-driven. Only extension-
         # specific props are non-animatable in v1.
-        node = lower_element(_ring(width=AnimatedValue(100.0)))
+        node = lower_element(_ring(width=_animated_node(100.0)))
         self.assertEqual(node.kind, "TimerRing")
         self.assertIn("width", node.props)
 
@@ -95,6 +117,8 @@ class ExtensionLoweringTests(unittest.TestCase):
             ))
 
     def test_container_extension_kind_accepts_children(self):
+        from vyne.extensions_registry import sync_from_host
+
         sync_from_host({
             "Panel": (["title"], [], [True]),
             "Leaf": (["v"], [], [False]),
@@ -107,7 +131,7 @@ class ExtensionLoweringTests(unittest.TestCase):
             ))
             self.assertEqual(1, len(node.children))
         finally:
-            sync_from_host(KINDS)
+            activate_extension_kinds()
 
     def test_extension_kind_is_allowed_inside_core_containers(self):
         # Core containers list exactly the core kinds they accept; extension

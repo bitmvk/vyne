@@ -192,34 +192,27 @@ class AddRemoveRebuildTests(unittest.TestCase):
 
 
 class DoctorExtensionTests(unittest.TestCase):
-    def test_doctor_reports_healthy_extensions(self):
+    def test_doctor_reports_extension_health(self):
         from vyne.cli.doctor import _checks
         from vyne.cli.new import create_project
         from vyne.cli.project import ProjectRepository
-        with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "App"
-            create_project(root, package="com.example.ext", module="app")
-            _write_extension(root)
-            inspection = ProjectRepository().inspect(root)
-            checks = _checks(inspection, require_device=False)
-            ext_check = [c for c in checks if c.name == "extensions"][0]
-            self.assertTrue(ext_check.ok)
-            self.assertIn("timer_ring", ext_check.detail)
 
-    def test_doctor_flags_broken_extension(self):
-        from vyne.cli.doctor import _checks
-        from vyne.cli.new import create_project
-        from vyne.cli.project import ProjectRepository
-        with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "App"
-            create_project(root, package="com.example.ext", module="app")
-            # A broken extension is an expected failure: the inspection
-            # records it as a stable issue, never a crash.
-            _write_extension(root, "timer_ring", "")
-            inspection = ProjectRepository().inspect(root)
-            checks = _checks(inspection, require_device=False)
-            ext_check = [c for c in checks if c.name == "extensions"][0]
-            self.assertFalse(ext_check.ok)
+        cases = [
+            ("healthy", MANIFEST, True),
+            ("broken", "", False),
+        ]
+        for label, manifest, expect_ok in cases:
+            with self.subTest(case=label):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "App"
+                    create_project(root, package="com.example.ext", module="app")
+                    _write_extension(root, "timer_ring", manifest)
+                    inspection = ProjectRepository().inspect(root)
+                    checks = _checks(inspection, require_device=False)
+                    ext_check = [c for c in checks if c.name == "extensions"][0]
+                    self.assertEqual(ext_check.ok, expect_ok)
+                    if expect_ok:
+                        self.assertIn("timer_ring", ext_check.detail)
 
 
 if __name__ == "__main__":

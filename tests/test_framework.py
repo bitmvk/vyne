@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 from vyne import (
-    AnimatedValue,
     animate,
     Box,
     Canvas,
@@ -19,38 +18,16 @@ from vyne import (
     TextInput,
     state,
 )
-from vyne.runtime import RenderNode, Runtime
+from vyne.runtime import Runtime
 from vyne.protocol import validate_message
 from vyne.transport import MemoryTransport
 
-
-def _listeners(commit, event):
-    return [
-        op
-        for op in commit["ops"]
-        if op.get("op") == "listen" and op.get("event") == event
-    ]
-
-
-def _props_for_kind(commit, kind):
-    create_ops = {
-        op["id"]: op["kind"]
-        for op in commit["ops"]
-        if op.get("op") == "create"
-    }
-    return [
-        op["props"]
-        for op in commit["ops"]
-        if op.get("op") == "set_props" and create_ops.get(op["id"]) == kind
-    ]
-
-
-def _set_props(commit, name):
-    return [
-        op
-        for op in commit["ops"]
-        if op.get("op") == "set_prop" and op.get("name") == name
-    ]
+from tests.support.runtime_helpers import (
+    dispatch_native_event,
+    find_listeners as _listeners,
+    props_for_kind as _props_for_kind,
+    set_props as _set_props,
+)
 
 
 class FrameworkTests(unittest.TestCase):
@@ -81,16 +58,7 @@ class FrameworkTests(unittest.TestCase):
         counter_listener, sibling_listener = _listeners(runtime.latest_commit, "click")
         sibling_node_before = runtime._coordinator.accepted_index[sibling_listener["id"]]
 
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": counter_listener["id"],
-                "event": "click",
-                "handler": counter_listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, counter_listener)
 
         # SCHED-04: full reconciliation always re-executes root when any
         # descendant is dirty (descendant_dirty propagates up).
@@ -105,16 +73,7 @@ class FrameworkTests(unittest.TestCase):
         )
 
         # A scoped render must not garbage-collect handlers in untouched siblings.
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 2,
-                "target": sibling_listener["id"],
-                "event": "click",
-                "handler": sibling_listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, sibling_listener, seq=2)
         self.assertEqual(sibling_clicks, ["clicked"])
 
     def test_component_props_rerender_scope_during_parent_render(self):
@@ -135,16 +94,7 @@ class FrameworkTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertEqual(calls["child"], 2)
         self.assertIn(
@@ -168,16 +118,7 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
         cached_element = runtime._root_scope.children[0].output
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertIs(runtime._root_scope.children[0].output, cached_element)
         self.assertEqual(len(_set_props(runtime.latest_commit, "text")), 1)
@@ -201,43 +142,12 @@ class FrameworkTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
         revision = runtime.revision
 
         child_states[0].set(1)
 
         self.assertEqual(runtime.revision, revision)
-
-    def test_animated_value_targets_are_diffed_as_declarative_markers(self):
-        target = {"value": 0.25}
-
-        runtime = Runtime(
-            lambda: Box(
-                opacity=AnimatedValue(
-                    target["value"],
-                    duration=90,
-                    easing="ease_out",
-                )
-            )
-        )
-        runtime.mount()
-
-        initial = _props_for_kind(runtime.latest_commit, "Box")[0]["opacity"]
-        self.assertEqual(initial["value"], 0.25)
-        target["value"] = 0.75
-        runtime.request_render()
-        changed = _set_props(runtime.latest_commit, "opacity")[0]["value"]
-        self.assertEqual(changed["value"], 0.75)
-        self.assertEqual(changed["duration"], 90)
 
     def test_latest_event_delivery_and_pointer_axis_are_serialized(self):
         def handle_move(event):
@@ -390,16 +300,7 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         ops = runtime.latest_commit["ops"]
         self.assertNotIn("clear", [op.get("op") for op in ops])
@@ -424,27 +325,9 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 2,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener, seq=2)
 
         self.assertEqual(
             _set_props(runtime.latest_commit, "text")[0],
@@ -467,16 +350,7 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertEqual(len(transport.messages), 2)
         self.assertEqual(
@@ -546,21 +420,17 @@ class FrameworkTests(unittest.TestCase):
             }
         }
         listener = listeners["pointer_move"]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "pointer_move",
-                "handler": listener["handler"],
-                "payload": {
-                    "x": 72.5,
-                    "y": 8.0,
-                    "down_x": 24.0,
-                    "down_y": 8.0,
-                    "pointer_id": 3,
-                },
-            }
+        dispatch_native_event(
+            runtime,
+            listener,
+            event="pointer_move",
+            payload={
+                "x": 72.5,
+                "y": 8.0,
+                "down_x": 24.0,
+                "down_y": 8.0,
+                "pointer_id": 3,
+            },
         )
 
         self.assertEqual(received, [("pointer_move", 72.5, 24.0, 3)])
@@ -577,16 +447,7 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertEqual(
             runtime.latest_commit["ops"],
@@ -622,16 +483,7 @@ class FrameworkTests(unittest.TestCase):
         runtime = Runtime(App, transport=MemoryTransport())
         runtime.mount()
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         # Multi-keyframe animation is one ordered native timeline.
         ops = runtime.latest_commit["ops"]
@@ -700,26 +552,8 @@ class FrameworkTests(unittest.TestCase):
         remove_listener = listeners[0]
         stale_listener = listeners[1]
 
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": remove_listener["id"],
-                "event": "click",
-                "handler": remove_listener["handler"],
-                "payload": {},
-            }
-        )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 2,
-                "target": stale_listener["id"],
-                "event": "click",
-                "handler": stale_listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, remove_listener)
+        dispatch_native_event(runtime, stale_listener, seq=2)
 
         self.assertEqual(runtime.latest_commit["revision"], 2)
 
@@ -742,15 +576,11 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "text_change")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "text_change",
-                "handler": listener["handler"],
-                "payload": {"text": "Ada"},
-            }
+        dispatch_native_event(
+            runtime,
+            listener,
+            event="text_change",
+            payload={"text": "Ada"},
         )
 
         self.assertEqual(len(transport.messages), 2)
@@ -798,15 +628,11 @@ class FrameworkTests(unittest.TestCase):
         )
 
         listener = _listeners(runtime.latest_commit, "focus_change")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "focus_change",
-                "handler": listener["handler"],
-                "payload": {"has_focus": True},
-            }
+        dispatch_native_event(
+            runtime,
+            listener,
+            event="focus_change",
+            payload={"has_focus": True},
         )
         # SCHED-02: the focus_change acknowledgement suppresses the
         # focused=True echo because native already holds that value.
@@ -850,16 +676,7 @@ class FrameworkTests(unittest.TestCase):
         runtime.mount()
 
         listener = _listeners(runtime.latest_commit, "click")[0]
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertEqual(
             _set_props(runtime.latest_commit, "text")[0],

@@ -1,5 +1,8 @@
 include android/gradlew
 include android/gradlew.bat
+include packages/vyne/src/vyne/py.typed
+include packages/vyne/src/vyne/elements.pyi
+recursive-include packages/vyne/src/vyne/cli/templates *
 include android/settings.gradle.kts
 include android/build.gradle.kts
 include android/gradle.properties

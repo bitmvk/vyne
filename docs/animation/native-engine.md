@@ -60,9 +60,8 @@ When a new target arrives for a live slot, the retarget policy decides:
 ## Prime (declarative values)
 
 `prime(slotKey, target)` establishes the first declarative value without
-animating it. Declarative `AnimatedValue` applies its first target
-immediately; a later target for the same stable slot uses the adapter's
-then-live value.
+animating it. A declarative driver applies its first target immediately;
+a later target for the same stable slot uses the adapter's then-live value.
 
 ## Drivers
 

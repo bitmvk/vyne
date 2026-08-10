@@ -1,0 +1,19 @@
+[project]
+name = "vyne-material"
+version = "0.1.0a1"
+description = "Material 3 Expressive widgets for Vyne."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["vyne~=0.1.0a1"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+vyne = { workspace = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vyne_material = ["py.typed"]

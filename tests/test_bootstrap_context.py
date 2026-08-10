@@ -188,27 +188,10 @@ class BootstrapImportContextTests(unittest.TestCase):
             run_app(my_app)
         self.assertIn("outside a host start sequence", str(ctx.exception))
 
-    def test_import_error_preserves_collector_reset(self):
-        """If the target module fails to import, the collector is reset."""
-        src = textwrap.dedent("""\
-        raise RuntimeError("import boom")
-        """)
-        _, mod_name = self._create_temp_module("fail_import", src)
-
-        with self.assertRaises(RuntimeError) as ctx:
-            _start_registered_app(mod_name, transport=MemoryTransport())
-        self.assertIn("import boom", str(ctx.exception))
-
-        import vyne.bootstrap as bm
-        self.assertIsNone(bm._registration_attempt.get())
-        # After a failed import, registered_apps still has entries from
-        # the failed module's partial execution. They are cleared at the
-        # next start. But _collecting must be None.
-
-    def test_import_error_followed_by_success(self):
-        """After an import failure, a subsequent start with a valid module works."""
+    def test_import_error_resets_collector_and_allows_recovery(self):
+        """A failed module import resets the collector; a later start works."""
         src_fail = textwrap.dedent("""\
-        raise RuntimeError("boom")
+        raise RuntimeError("import boom")
         """)
         src_ok = textwrap.dedent("""\
         from vyne import run_app
@@ -222,9 +205,14 @@ class BootstrapImportContextTests(unittest.TestCase):
         _, fail_mod = self._create_temp_module("fail_then", src_fail)
         _, ok_mod = self._create_temp_module("ok_then", src_ok)
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaisesRegex(RuntimeError, "import boom"):
             _start_registered_app(fail_mod, transport=MemoryTransport())
 
+        import vyne.bootstrap as bm
+        # The failed import must leave the collector reset.
+        self.assertIsNone(bm._registration_attempt.get())
+
+        # A subsequent start with a valid module succeeds.
         runtime = _start_registered_app(ok_mod, transport=MemoryTransport())
         self.assertIsNotNone(runtime)
         runtime.dispose()

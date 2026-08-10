@@ -29,6 +29,12 @@ val frameworkPythonDir = if (frameworkPythonPath != null) {
 } else {
     rootProject.file("../packages/vyne/src")
 }
+val materialPythonPath = providers.gradleProperty("vyne.materialPythonDir").orNull
+val materialPythonDir = if (materialPythonPath != null) {
+    file(materialPythonPath)
+} else {
+    rootProject.file("../packages/vyne-material/src")
+}
 val extensionKotlinDirs = providers.gradleProperty("vyne.extensionKotlinDirs")
     .orElse("").get().split(":").filter { it.isNotBlank() }
 val extensionResDirs = providers.gradleProperty("vyne.extensionResDirs")
@@ -119,6 +125,9 @@ chaquopy {
         getByName("main") {
             srcDir(frameworkPythonDir)
             srcDir(appSourceFile.parentFile)
+            if (materialPythonDir.isDirectory) {
+                srcDir(materialPythonDir)
+            }
             extensionPythonDirs.forEach { srcDir(it) }
         }
     }

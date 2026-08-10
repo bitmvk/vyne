@@ -14,7 +14,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from vyne.material import DatePicker, DateRangePicker
+from vyne_material import DatePicker, DateRangePicker
 
 
 class DatePickerTypeValidationTests(unittest.TestCase):
@@ -35,6 +35,22 @@ class DatePickerTypeValidationTests(unittest.TestCase):
     def test_rejects_string_year(self):
         with self.assertRaises(TypeError):
             DatePicker(year="2026", month=1)
+
+    def test_rejects_year_and_month_out_of_bounds(self):
+        """Year 0/10000 and month 0/13 are rejected."""
+        with self.assertRaises(ValueError):
+            DatePicker(year=0, month=1)
+        with self.assertRaises(ValueError):
+            DatePicker(year=10000, month=1)
+        with self.assertRaises(ValueError):
+            DatePicker(year=2026, month=0)
+        with self.assertRaises(ValueError):
+            DatePicker(year=2026, month=13)
+
+    def test_accepts_year_boundaries(self):
+        """Year 1 and 9999 are valid."""
+        self.assertIsNotNone(DatePicker(year=1, month=1))
+        self.assertIsNotNone(DatePicker(year=9999, month=11))
 
     def test_rejects_non_date_selected(self):
         with self.assertRaises(TypeError):
@@ -103,33 +119,13 @@ class DatePickerBoundaryNavigationTests(unittest.TestCase):
 class DatePickerBoundaryGridTests(unittest.TestCase):
     """Safe calendar grid at year boundaries."""
 
-    def test_year_1_all_weekdays(self):
-        """All first_weekday values 0-6 work at year 1, month 1."""
-        for weekday in range(7):
-            picker = DatePicker(year=1, month=1, first_weekday=weekday)
-            self.assertIsNotNone(picker)
-
-    def test_year_9999_december_all_weekdays(self):
-        """All first_weekday values work at year 9999, month 12."""
-        for weekday in range(7):
-            picker = DatePicker(year=9999, month=12, first_weekday=weekday)
-            self.assertIsNotNone(picker)
-
-    def test_year_9999_november_all_weekdays(self):
-        """All first_weekday values work at year 9999, month 11."""
-        for weekday in range(7):
-            picker = DatePicker(year=9999, month=11, first_weekday=weekday)
-            self.assertIsNotNone(picker)
-
-    def test_year_1_december_all_weekdays(self):
-        for weekday in range(7):
-            picker = DatePicker(year=1, month=12, first_weekday=weekday)
-            self.assertIsNotNone(picker)
-
-    def test_year_1_february_all_weekdays(self):
-        for weekday in range(7):
-            picker = DatePicker(year=1, month=2, first_weekday=weekday)
-            self.assertIsNotNone(picker)
+    def test_all_weekdays_work_at_boundaries(self):
+        """All first_weekday values 0-6 work at boundary (year, month) pairs."""
+        for year, month in ((1, 1), (1, 2), (1, 12), (9999, 11), (9999, 12)):
+            for weekday in range(7):
+                with self.subTest(year=year, month=month, first_weekday=weekday):
+                    picker = DatePicker(year=year, month=month, first_weekday=weekday)
+                    self.assertIsNotNone(picker)
 
 
 class DateRangePickerValidationTests(unittest.TestCase):

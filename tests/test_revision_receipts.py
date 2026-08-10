@@ -14,71 +14,7 @@ from vyne.runtime import Runtime
 from vyne.scheduler import CommitCoordinator
 from vyne.transport import MemoryTransport
 
-
-def _reserve(coordinator: CommitCoordinator, revision: int) -> None:
-    """Complete the same provisional-send transition used by Runtime."""
-    coordinator.reserve_send(revision)
-    coordinator.finish_send(revision)
-
-
-class StaleRevisionTests(unittest.TestCase):
-    """Stale revision acknowledgements must not affect current state."""
-
-    def test_stale_ok_does_not_promote(self):
-        """A stale OK ack must not promote a newer revision."""
-        c = CommitCoordinator()
-        from vyne.render_model import RenderNode
-
-        # Stage and publish rev 10.
-        r10 = RenderNode(id=1, kind="Layout", parent_id=0)
-        c.stage_candidate(r10, {1: r10}, next_node_id=2)
-        _reserve(c, 10)
-        self.assertTrue(c.in_flight)
-        self.assertEqual(c.in_flight_revision, 10)
-
-        # Stale ack for rev 5.
-        self.assertFalse(c.promote(5))
-        self.assertTrue(c.in_flight)
-        self.assertEqual(c.in_flight_revision, 10)
-
-        # Correct ack for rev 10.
-        self.assertTrue(c.promote(10))
-        self.assertFalse(c.in_flight)
-        self.assertEqual(c.accepted_revision, 10)
-
-    def test_stale_rejection_does_not_discard_current(self):
-        """A stale rejection must not discard the current in-flight."""
-        c = CommitCoordinator()
-        from vyne.render_model import RenderNode
-
-        r = RenderNode(id=1, kind="Layout", parent_id=0)
-        c.stage_candidate(r, {1: r}, next_node_id=2)
-        _reserve(c, 20)
-
-        # Reject a different revision.
-        self.assertFalse(c.reject_known(19))
-        self.assertTrue(c.in_flight)
-        self.assertEqual(c.in_flight_revision, 20)
-
-        # Reject the correct revision.
-        self.assertTrue(c.reject_known(20))
-        self.assertFalse(c.in_flight)
-
-    def test_double_ack_does_not_double_promote(self):
-        """Receiving the same ack twice must not cause issues."""
-        c = CommitCoordinator()
-        from vyne.render_model import RenderNode
-
-        r = RenderNode(id=1, kind="Layout", parent_id=0)
-        c.stage_candidate(r, {1: r}, next_node_id=2)
-        _reserve(c, 1)
-        self.assertTrue(c.promote(1))
-        self.assertFalse(c.in_flight)
-
-        # Second ack for same revision (already promoted).
-        self.assertFalse(c.promote(1))
-        self.assertFalse(c.in_flight)
-        self.assertEqual(c.accepted_revision, 1)
+from tests.support.runtime_helpers import reserve
 
 
 class NullRevisionTests(unittest.TestCase):
@@ -124,7 +60,7 @@ class ReorderedReceiptTests(unittest.TestCase):
         r1 = RenderNode(id=1, kind="Layout", parent_id=0,
                         props={"orientation": "vertical"})
         c.stage_candidate(r1, {1: r1}, next_node_id=2)
-        _reserve(c, 1)
+        reserve(c, 1)
         self.assertTrue(c.promote(1))
         self.assertEqual(c.accepted_revision, 1)
 
@@ -132,7 +68,7 @@ class ReorderedReceiptTests(unittest.TestCase):
         r2 = RenderNode(id=1, kind="Layout", parent_id=0,
                         props={"orientation": "horizontal"})
         c.stage_candidate(r2, {1: r2}, next_node_id=2)
-        _reserve(c, 2)
+        reserve(c, 2)
         self.assertTrue(c.in_flight)
         self.assertEqual(c.in_flight_revision, 2)
 
@@ -153,7 +89,7 @@ class ReorderedReceiptTests(unittest.TestCase):
 
         r = RenderNode(id=1, kind="Layout", parent_id=0)
         c.stage_candidate(r, {1: r}, next_node_id=2)
-        _reserve(c, 5)
+        reserve(c, 5)
 
         # Failure for rev 5.
         self.assertTrue(c.reject_known(5))

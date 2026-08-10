@@ -13,8 +13,8 @@ from __future__ import annotations
 import math
 import unittest
 
-from vyne.material._callbacks import CallbackAdapter
-from vyne.material._validation import (
+from vyne_material._callbacks import CallbackAdapter
+from vyne_material._validation import (
     RangeSliderGesture,
     SliderGesture,
     SliderSpec,
@@ -102,9 +102,9 @@ class SliderGestureLifecycleTests(unittest.TestCase):
         g.tap(164)
         self.assertEqual(len(received), 3)
 
-    def test_null_adapter_no_emission(self):
+    def test_null_adapter_does_not_raise(self):
         g = SliderGesture(self.spec, None)
-        # Should not raise
+        # Gesture routing must tolerate a missing adapter without raising.
         g.down("single", 142)
         g.move(164)
         g.up()
@@ -156,11 +156,11 @@ class RangeSliderGestureTests(unittest.TestCase):
         g.move_end(208)  # not active -> no emission
         self.assertEqual(len(received), 0)
 
-    def test_up_and_cancel(self):
+    def test_up_and_cancel_do_not_raise_with_null_adapter(self):
         g = RangeSliderGesture(self.spec, None, 0.2, 0.8)
         g.down_start(32)
         g.up_start()
-        # Idempotent
+        # Idempotent: repeated up/cancel is safe
         g.up_start()
         g.cancel_start()
 
@@ -174,7 +174,7 @@ class RangeSliderGestureTests(unittest.TestCase):
         self.assertAlmostEqual(received[1][0], 0.1)
         self.assertAlmostEqual(received[1][1], 0.9)
 
-    def test_null_adapter_no_emission(self):
+    def test_null_adapter_does_not_raise(self):
         g = RangeSliderGesture(self.spec, None, 0.2, 0.8)
         g.down_start(32)
         g.move_start(100)

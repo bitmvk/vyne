@@ -175,7 +175,6 @@ The Python framework currently exposes:
 - `Style`
 - `Stroke`
 - `Animated`
-- `AnimatedValue`
 - `animate`
 - `component`
 - `latest`
@@ -186,12 +185,14 @@ The Python framework currently exposes:
 - `activity()` and `callback()` (application-owned Android escape hatch)
 - `Ref` / `ViewHandle` (imperative access)
 
-The complete Material 3 Expressive catalog is available from
-`vyne.material`. It contains all 36 current component families, shared color/
-type/shape/motion tokens, and controlled Python callbacks without adding
-Material-specific renderer kinds. See
-[`docs/material3-expressive.md`](docs/material3-expressive.md) for the catalog
-and usage guide.
+The complete Material 3 Expressive catalog is available from the separate
+`vyne-material` distribution as the `vyne_material` import package. It
+contains all 36 current component families, shared color/type/shape/motion
+tokens, and controlled Python callbacks without adding Material-specific
+renderer kinds. Install it with `uv add vyne-material` (or
+`pip install vyne-material`). See
+[`docs/material3-expressive.md`](docs/material3-expressive.md) for the
+catalog and usage guide.
 
 For a click effect or a one-off transition, animate the properties directly.
 There is no animated value to declare first:
@@ -269,26 +270,6 @@ def Meter():
 `.start()`. Arithmetic, `clamp()`, and `interpolate()` create derived
 expressions evaluated on every native frame; a single driver can therefore
 update many presentation slots without calling Python.
-
-The legacy target-driven `AnimatedValue(...)` API remains available for
-compatibility:
-
-```python
-from vyne import AnimatedValue, Box
-
-position = AnimatedValue(
-    72,
-    duration=80,
-    easing="ease_out",
-    retarget="maintain_velocity",
-)
-
-Box(translation_x=position)
-```
-
-The first target is applied immediately. Later targets animate from the live
-displayed value. This compatibility surface still supports Canvas fields,
-retarget policies, and generic springs.
 
 Imperative animation commands are ordered with the tree commit which created or
 updated their target, but frames run entirely on the native display clock:

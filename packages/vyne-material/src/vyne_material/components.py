@@ -17,14 +17,13 @@ from typing import Any
 from vyne.elements import Box, Canvas, Column
 from vyne.elements import Element, Row, TextInput
 from vyne.component import component
-from vyne.animations import AnimatedValue
 from vyne.events import latest
-from vyne.material._callbacks import (
+from vyne_material._callbacks import (
     normalize_selection,
     prepare_handler,
     prepare_value_binding,
 )
-from vyne.material._foundation import (
+from vyne_material._foundation import (
     alpha,
     checkmark_canvas,
     invoke,
@@ -40,7 +39,7 @@ from vyne.material._foundation import (
     value_handler,
     wavy_path,
 )
-from vyne.material._validation import (
+from vyne_material._validation import (
     RangeSliderGesture,
     SliderGesture,
     SliderSpec,
@@ -48,10 +47,17 @@ from vyne.material._validation import (
     slider_targets,
     validate_finite,
 )
-from vyne.material.theme import DEFAULT_THEME, MaterialTheme
+from vyne_material.theme import DEFAULT_THEME, MaterialTheme
 
 
 Callback = Callable[..., Any]
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    """Clamp *value* into the inclusive [minimum, maximum] interval."""
+    if minimum > maximum:
+        raise ValueError("minimum must be <= maximum")
+    return max(minimum, min(value, maximum))
 
 
 @dataclass(frozen=True)
@@ -1681,26 +1687,26 @@ def Slider(
 
     # Only build discrete targets when step is set (no dead work for continuous).
     targets = slider_targets(spec)
-    visual_fraction = AnimatedValue(
-        fraction,
-        duration=48,
-        easing="linear",
-        retarget="maintain_velocity",
-    )
+    # The thumb tracks the controlled value directly. A declarative Canvas
+    # target animation is intentionally not used here: the supported
+    # animation APIs are imperative and require a mounted view.
     active = theme.colors.primary if enabled else alpha(theme.colors.on_surface, 0.38)
     inactive = theme.colors.secondary_container if enabled else alpha(theme.colors.on_surface, 0.12)
     active_tick = theme.colors.on_primary if enabled else alpha(theme.colors.on_surface, 0.38)
     inactive_tick = theme.colors.on_surface_variant if enabled else alpha(theme.colors.on_surface, 0.38)
     thumb_x = 10 + (spec.width - 20) * fraction
-    visual_thumb_x = 10 + (spec.width - 20) * visual_fraction
     track_left = 2
     track_right = spec.width - 2
     thumb_gap = 6
-    active_width = (visual_thumb_x - thumb_gap - track_left).clamp(
-        0, track_right - track_left
+    active_width = _clamp(
+        thumb_x - thumb_gap - track_left,
+        0,
+        track_right - track_left,
     )
-    inactive_start = (visual_thumb_x + thumb_gap).clamp(track_left, track_right)
-    inactive_width = (track_right - inactive_start).clamp(0, track_right - track_left)
+    inactive_start = _clamp(thumb_x + thumb_gap, track_left, track_right)
+    inactive_width = _clamp(
+        track_right - inactive_start, 0, track_right - track_left
+    )
 
     # Ticks: only for discrete sliders.
     ticks: list[dict[str, Any]] = []
@@ -1718,7 +1724,7 @@ def Slider(
         draw=[
             *track_draw,
             *ticks,
-            {"kind": "round_rect", "x": visual_thumb_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
+            {"kind": "round_rect", "x": thumb_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
         ],
         view_box=[0, 0, spec.width, 48],
         width=spec.width,
@@ -1795,22 +1801,11 @@ def RangeSlider(
     end_fraction = (end - spec.minimum) / (spec.maximum - spec.minimum)
 
     targets = slider_targets(spec)
-    visual_start_fraction = AnimatedValue(
-        start_fraction,
-        duration=48,
-        easing="linear",
-        retarget="maintain_velocity",
-    )
-    visual_end_fraction = AnimatedValue(
-        end_fraction,
-        duration=48,
-        easing="linear",
-        retarget="maintain_velocity",
-    )
+    # The thumbs track the controlled values directly. A declarative Canvas
+    # target animation is intentionally not used here: the supported
+    # animation APIs are imperative and require a mounted view.
     start_x = 10 + (spec.width - 20) * start_fraction
     end_x = 10 + (spec.width - 20) * end_fraction
-    visual_start_x = 10 + (spec.width - 20) * visual_start_fraction
-    visual_end_x = 10 + (spec.width - 20) * visual_end_fraction
     active = theme.colors.primary if enabled else alpha(theme.colors.on_surface, 0.38)
     inactive = theme.colors.secondary_container if enabled else alpha(theme.colors.on_surface, 0.12)
     active_tick = theme.colors.on_primary if enabled else alpha(theme.colors.on_surface, 0.38)
@@ -1818,15 +1813,21 @@ def RangeSlider(
     track_left = 2
     track_right = spec.width - 2
     thumb_gap = 6
-    left_width = (visual_start_x - thumb_gap - track_left).clamp(
-        0, track_right - track_left
+    left_width = _clamp(
+        start_x - thumb_gap - track_left,
+        0,
+        track_right - track_left,
     )
-    active_start = (visual_start_x + thumb_gap).clamp(track_left, track_right)
-    active_width = (visual_end_x - visual_start_x - thumb_gap * 2).clamp(
-        0, track_right - track_left
+    active_start = _clamp(start_x + thumb_gap, track_left, track_right)
+    active_width = _clamp(
+        end_x - start_x - thumb_gap * 2,
+        0,
+        track_right - track_left,
     )
-    right_start = (visual_end_x + thumb_gap).clamp(track_left, track_right)
-    right_width = (track_right - right_start).clamp(0, track_right - track_left)
+    right_start = _clamp(end_x + thumb_gap, track_left, track_right)
+    right_width = _clamp(
+        track_right - right_start, 0, track_right - track_left
+    )
     track_draw: list[dict[str, Any]] = [
         {"kind": "round_rect", "x": track_left, "y": 16, "width": left_width, "height": 16, "radius": 8, "fill": inactive},
         {"kind": "round_rect", "x": active_start, "y": 16, "width": active_width, "height": 16, "radius": 8, "fill": active},
@@ -1850,8 +1851,8 @@ def RangeSlider(
         draw=[
             *track_draw,
             *ticks,
-            {"kind": "round_rect", "x": visual_start_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
-            {"kind": "round_rect", "x": visual_end_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
+            {"kind": "round_rect", "x": start_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
+            {"kind": "round_rect", "x": end_x - 2, "y": 2, "width": 4, "height": 44, "radius": 2, "fill": active},
         ],
         view_box=[0, 0, spec.width, 48],
         width=spec.width,

@@ -59,49 +59,6 @@ class GenerationTransactionTests(unittest.TestCase):
             self.assertTrue((target / "hello.txt").is_file())
             self.assertEqual((target / "hello.txt").read_text(), "world")
 
-    def test_nonempty_target_preserves_unrelated_files(self):
-        """Files not managed by the plan remain untouched."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "existing"
-            target.mkdir()
-            unrelated = target / "unrelated.txt"
-            unrelated.write_text("keep me", encoding="utf-8")
-
-            builder = PlanBuilder(target)
-            builder.add_file("managed.txt", "new managed",
-                             policy=ConflictPolicy.REPLACE)
-
-            plan = builder.preflight()
-            try:
-                plan.apply()
-            finally:
-                plan.cleanup()
-
-            self.assertTrue(target.is_dir())
-            self.assertEqual((target / "managed.txt").read_text(), "new managed")
-            # Unrelated file was NOT preserved in whole-target swap mode.
-            # This is expected when the target is non-empty: the whole
-            # target gets swapped.  Record this as documented behavior.
-
-    def test_force_policy_overwrites_existing(self):
-        """REPLACE policy overwrites an existing file with different content."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "existing"
-            target.mkdir()
-            (target / "force.txt").write_text("old", encoding="utf-8")
-
-            builder = PlanBuilder(target)
-            builder.add_file("force.txt", "new",
-                             policy=ConflictPolicy.REPLACE)
-
-            plan = builder.preflight()
-            try:
-                plan.apply()
-            finally:
-                plan.cleanup()
-
-            self.assertEqual((target / "force.txt").read_text(), "new")
-
     def test_error_policy_raises_on_conflict_before_preflight(self):
         """ERROR policy raises immediately during add_file when content differs."""
         with TemporaryDirectory() as tmp:

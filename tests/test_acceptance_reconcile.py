@@ -187,38 +187,20 @@ class ReconciliationCorrectnessTests(unittest.TestCase):
 
         return applied, expected, runtime.latest_commit["ops"]
 
-    def test_keyed_reorder_a_b_to_c_b_d(self):
-        """[a,b] -> [c,b,d]: remove a, keep b, create c and d."""
-        applied, expected, ops = self._test_reorder(
-            ["a", "b"], ["c", "b", "d"],
-            "a_b->c_b_d",
-        )
-        self._assert_trees_match(applied, expected)
-
-    def test_keyed_reorder_a_b_c_d_to_d_b_c_a(self):
-        """[a,b,c,d] -> [d,b,c,a]: last to first, first to last."""
-        applied, expected, ops = self._test_reorder(
-            ["a", "b", "c", "d"], ["d", "b", "c", "a"],
-            "abcd->dbca",
-        )
-        self._assert_trees_match(applied, expected)
-
-    def test_keyed_reorder_abcde_to_edcba(self):
-        """[a,b,c,d,e] -> [e,d,c,b,a]: full reverse."""
-        applied, expected, ops = self._test_reorder(
-            list("abcde"), list("edcba"),
-            "abcde->edcba",
-        )
-        self._assert_trees_match(applied, expected)
-
-    def test_keyed_reorder_abcde_to_bdaec(self):
-        """[a,b,c,d,e] -> [b,d,a,e,c]: arbitrary shuffle."""
-        applied, expected, ops = self._test_reorder(
-            ["a", "b", "c", "d", "e"],
-            ["b", "d", "a", "e", "c"],
-            "abcde->bdaec",
-        )
-        self._assert_trees_match(applied, expected)
+    def test_keyed_reorder_traces(self):
+        """Known keyed reorder traces produce matching native trees."""
+        cases = [
+            ("a_b->c_b_d", ["a", "b"], ["c", "b", "d"]),
+            ("abcd->dbca", ["a", "b", "c", "d"], ["d", "b", "c", "a"]),
+            ("abcde->edcba", list("abcde"), list("edcba")),
+            ("abcde->bdaec", list("abcde"), ["b", "d", "a", "e", "c"]),
+        ]
+        for label, initial, desired in cases:
+            with self.subTest(trace=label):
+                applied, expected, ops = self._test_reorder(
+                    initial, desired, label,
+                )
+                self._assert_trees_match(applied, expected)
 
     # ----------------------------------------------------------------
     # Randomized lifecycle

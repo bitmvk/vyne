@@ -9,6 +9,8 @@ from vyne import AnimationEvent, AnimationHandle, Text, animate, state
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import SilentTransport
+
 
 def _click(runtime: Runtime, sequence: int = 1) -> None:
     target, node = next(
@@ -243,13 +245,6 @@ class AnimationLifecycleTests(unittest.TestCase):
         self.assertIs(runtime._animations[handle.id].handle, handle)
 
     def test_apply_receipt_closes_before_lifecycle_callback_transaction(self):
-        class SilentTransport:
-            def __init__(self):
-                self.messages = []
-
-            def send(self, message):
-                self.messages.append(message)
-
         handles: list[AnimationHandle] = []
 
         def app():
@@ -324,13 +319,6 @@ class AnimationLifecycleTests(unittest.TestCase):
         self.assertEqual(runtime._anim_pending, [])
 
     def test_known_native_rejection_marks_unstarted_handle_rejected(self):
-        class SilentTransport:
-            def __init__(self):
-                self.messages = []
-
-            def send(self, message):
-                self.messages.append(message)
-
         handles: list[AnimationHandle] = []
         runtime = Runtime(
             lambda: Text(
@@ -353,13 +341,6 @@ class AnimationLifecycleTests(unittest.TestCase):
         self.assertEqual(runtime._animations, {})
 
     def test_unknown_native_result_does_not_leave_handle_running_forever(self):
-        class SilentTransport:
-            def __init__(self):
-                self.messages = []
-
-            def send(self, message):
-                self.messages.append(message)
-
         handles: list[AnimationHandle] = []
         runtime = Runtime(
             lambda: Text(

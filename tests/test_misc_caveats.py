@@ -1,7 +1,7 @@
 """Caveat tests for motion commands, elements, state, and path data.
 
 Small-but-important contracts that guard against invalid values entering
-the pipeline, plus the MaterialDivider lowering contract.
+the pipeline.
 """
 
 from __future__ import annotations
@@ -9,9 +9,8 @@ from __future__ import annotations
 import math
 import unittest
 
-from vyne import Column, Text, component, state
+from vyne import Text, component, state
 from vyne.elements import Element, normalize_child, normalize_children
-from vyne.material import MaterialDivider
 from vyne.motion import (
     Cancel,
     PresentationSlot,
@@ -22,8 +21,7 @@ from vyne.motion import (
 )
 from vyne.path_data import compile_path_data
 from vyne.protocol import validate_message
-from vyne.runtime import Runtime
-from vyne.transport import MemoryTransport
+
 
 
 class PresentationSlotTests(unittest.TestCase):
@@ -135,10 +133,6 @@ class ElementNormalizationTests(unittest.TestCase):
                 self.assertEqual(element.kind, "Text")
                 self.assertEqual(element.props["text"], expected)
 
-    def test_normalize_child_rejects_arbitrary_objects(self):
-        with self.assertRaisesRegex(TypeError, "Cannot render child"):
-            normalize_child(object())
-
     def test_normalize_children_flattens_and_drops_none(self):
         children = normalize_children((
             Text(text="a"),
@@ -169,36 +163,6 @@ class PathDataTests(unittest.TestCase):
             [(c["cmd"], tuple(c["values"])) for c in commands],
             [("M", (0.0, 0.0)), ("L", (10.0, 10.0)), ("Z", ())],
         )
-
-
-class MaterialDividerContractTests(unittest.TestCase):
-    def test_horizontal_lowers_to_thin_box(self):
-        element = MaterialDivider(thickness=2, inset=8)
-        self.assertEqual(element.kind, "Box")
-        self.assertEqual(element.props["height"], 2)
-        self.assertEqual(element.props["margin_start"], 8)
-        self.assertEqual(element.props["margin_end"], 8)
-        self.assertNotIn("margin_top", element.props)
-        self.assertIn("background_color", element.props)
-
-    def test_vertical_lowers_to_wide_box(self):
-        element = MaterialDivider(orientation="vertical", thickness=3)
-        self.assertEqual(element.props["width"], 3)
-        self.assertNotIn("height", element.props)
-
-    def test_invalid_orientation_rejected(self):
-        with self.assertRaises((TypeError, ValueError)):
-            MaterialDivider(orientation="diagonal")
-
-    def test_divider_mounts_and_commits(self):
-        transport = MemoryTransport()
-        runtime = Runtime(lambda: Column(MaterialDivider()), transport=transport)
-        runtime.mount()
-        kinds = [
-            op["kind"] for op in transport.latest["ops"] if op["op"] == "create"
-        ]
-        self.assertEqual(kinds, ["Layout", "Box"])
-        runtime.dispose()
 
 
 if __name__ == "__main__":

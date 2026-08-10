@@ -6,6 +6,8 @@ from vyne import Column, Text, component, state
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import dispatch_native_event
+
 
 class _FailingMemoryTransport(MemoryTransport):
     def __init__(self) -> None:
@@ -118,16 +120,7 @@ class KeyedComponentTests(unittest.TestCase):
         accepted_root = runtime._coordinator.accepted_root
 
         transport.fail_next = True
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": listener["id"],
-                "event": "click",
-                "handler": listener["handler"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, listener)
 
         self.assertEqual(order_cell.value, ("a", "b"))
         self.assertEqual(

@@ -627,3 +627,150 @@ def test_callback_defaults_to_the_main_session(monkeypatch) -> None:
 
     assert wrapped[0] == "native-callback"
     assert host.created_callbacks[0][1] == "all"
+
+
+# ---------------------------------------------------------------------------
+# Shared dispatch seam (main + surface through one decoder / dispatcher)
+# ---------------------------------------------------------------------------
+
+class JavaEvent:
+    """Minimal Java wrapper for one native event in a batch."""
+
+    def __init__(self, sequence, target, name, handler, payload) -> None:
+        self.sequence = sequence
+        self.target = target
+        self.name = name
+        self.handler = handler
+        self.payload = payload
+
+    def getSequence(self):
+        return self.sequence
+
+    def getTarget(self):
+        return self.target
+
+    def getName(self):
+        return self.name
+
+    def getHandler(self):
+        return self.handler
+
+    def getPayload(self):
+        return self.payload
+
+
+class RecordingDispatcher:
+    """Records (function, settle) bridge turns without running them."""
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def call(self, function, settle=None):
+        self.calls.append((function, settle))
+
+
+def _session_with_dispatcher(runtime, dispatcher):
+    return android._DirectSession(
+        host=AndroidHost(),
+        runtime=runtime,
+        transport=object(),
+        dispatcher=dispatcher,
+    )
+
+
+def test_batch_dispatch_is_isolated_per_session_dispatcher(monkeypatch) -> None:
+    """Batch events route through the owning session's dispatcher only.
+
+    Main batches never reach the surface dispatcher and surface batches
+    never reach the main dispatcher; the decoded batch still reaches the
+    owning runtime when the recorded bridge turn runs.
+    """
+    main_runtime = RecordingRuntime()
+    surface_runtime = SurfaceRuntime()
+    main_dispatcher = RecordingDispatcher()
+    surface_dispatcher = RecordingDispatcher()
+    monkeypatch.setattr(
+        android, "_session",
+        _session_with_dispatcher(main_runtime, main_dispatcher),
+    )
+    sessions = make_surface_sessions(monkeypatch)
+    sessions["sms_overlay"] = _session_with_dispatcher(
+        surface_runtime, surface_dispatcher
+    )
+
+    android.dispatch_events_direct(
+        JavaList([JavaEvent(1, 4, "click", 9, {})])
+    )
+    assert len(main_dispatcher.calls) == 1
+    assert len(surface_dispatcher.calls) == 0
+    function, settle = main_dispatcher.calls[0]
+    assert settle is main_runtime
+    function()
+    assert main_runtime.events == [
+        Event(name="click", target=4, handler=9, payload={}, sequence=1)
+    ]
+
+    android.dispatch_events_surface(
+        "sms_overlay",
+        JavaList([JavaEvent(2, 5, "click", 10, {})]),
+    )
+    assert len(surface_dispatcher.calls) == 1
+    assert len(main_dispatcher.calls) == 1
+    function, settle = surface_dispatcher.calls[0]
+    assert settle is surface_runtime
+    function()
+    assert surface_runtime.events == [
+        Event(name="click", target=5, handler=10, payload={}, sequence=2)
+    ]
+
+
+def test_shared_ingress_reports_unknown_task_and_not_started(monkeypatch) -> None:
+    """The shared seam reports identical decode and not-started errors."""
+    monkeypatch.setattr(
+        android, "_session",
+        make_session(runtime=RecordingRuntime()),
+    )
+    sessions = make_surface_sessions(monkeypatch)
+    sessions["sms_overlay"] = make_session(
+        host=AndroidHost(), runtime=SurfaceRuntime()
+    )
+
+    for entry in (
+        lambda: android.dispatch_external_callbacks_direct(
+            JavaList([ExternalTask("callbacks", object())])
+        ),
+        lambda: android.dispatch_external_callbacks_surface(
+            "sms_overlay",
+            JavaList([ExternalTask("callbacks", object())]),
+        ),
+    ):
+        try:
+            entry()
+        except ValueError as error:
+            assert "Unknown external callback task" in str(error)
+        else:
+            raise AssertionError("unknown task kind must raise")
+
+    monkeypatch.setattr(android, "_session", None)
+    sessions.clear()
+    for operation, message in (
+        (lambda: android.dispatch_events_direct(JavaList([])),
+         "Python runtime is not started"),
+        (lambda: android.dispatch_event_direct(1, 1, "click", 1, {}),
+         "Python runtime is not started"),
+        (lambda: android.dispatch_external_callbacks_direct(JavaList([])),
+         "Python runtime is not started"),
+        (lambda: android.dispatch_events_surface("ghost", JavaList([])),
+         "Surface 'ghost' is not started"),
+        (lambda: android.dispatch_event_surface("ghost", 1, 1, "click", 1, {}),
+         "Surface 'ghost' is not started"),
+        (lambda: android.dispatch_external_callbacks_surface(
+             "ghost", JavaList([])),
+         "Surface 'ghost' is not started"),
+    ):
+        try:
+            operation()
+        except RuntimeError as error:
+            assert str(error) == message
+        else:
+            raise AssertionError("not-started dispatch must raise")

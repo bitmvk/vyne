@@ -93,6 +93,22 @@ class CanvasDrawValidationTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             validate_canvas_draw_ops("not a list")
 
+    def test_tuple_draw_accepted_by_canonical_validation(self):
+        """Canonical draw storage is a frozen tuple; validation accepts it."""
+        ops = ({"kind": "rect", "x": 0, "y": 0, "width": 1, "height": 1},)
+        validate_canvas_draw_ops(ops)  # must not raise
+
+    def test_draw_schema_accepts_list_and_tuple(self):
+        from vyne.spec.schema_v2 import ALL_PROPS
+        self.assertEqual(ALL_PROPS["draw"].value.exact_types, (list, tuple))
+
+    def test_canvas_constructor_rejects_tuple_draw(self):
+        """The public Canvas() constructor compiles a list, not a tuple."""
+        with self.assertRaises(TypeError):
+            Canvas(draw=(
+                {"kind": "rect", "x": 0, "y": 0, "width": 1, "height": 1},
+            ))
+
     def test_negative_width_rejected(self):
         ops = [{"kind": "rect", "x": 0, "y": 0, "width": -10, "height": 10}]
         with self.assertRaises(ValueError):

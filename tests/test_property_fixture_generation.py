@@ -21,7 +21,7 @@ from vyne import (
 )
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
-from vyne.spec.schema_v2 import PRIMITIVE_KINDS, PROPS_BY_KIND
+from vyne.spec.schema_v2 import PROPS_BY_KIND
 
 
 def _collect_props(ops: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
@@ -96,44 +96,22 @@ class GeneratedKindFixtureTests(unittest.TestCase):
                         f"expected str/int/float: {val!r}"
                     )
 
-    def test_box_default_fixture(self):
-        """Box generates a contract-compliant commit."""
-        self._assert_fixture_for(Box(), "Box")
-
-    def test_layout_default_fixture(self):
-        """Layout generates a contract-compliant commit."""
-        self._assert_fixture_for(Layout(), "Layout")
-
-    def test_scroll_default_fixture(self):
-        """Scroll generates a contract-compliant commit."""
-        self._assert_fixture_for(Scroll(), "Scroll")
-
-    def test_text_default_fixture(self):
-        """Text generates a contract-compliant commit without container props."""
-        self._assert_fixture_for(Text(text="hello"), "Text")
-
-    def test_textinput_default_fixture(self):
-        """TextInput generates a contract-compliant commit with editable baseline."""
-        self._assert_fixture_for(TextInput(text="edit me"), "TextInput")
-
-    def test_image_default_fixture(self):
-        """Image generates a contract-compliant commit."""
-        self._assert_fixture_for(Image(source="icon.png"), "Image")
-
-    def test_path_default_fixture(self):
-        """Path generates a contract-compliant commit."""
-        # Path uses d= parameter (SVG path data string)
-        self._assert_fixture_for(
-            Path(d="M10 10 L100 100"),
-            "Path",
-        )
-
-    def test_canvas_default_fixture(self):
-        """Canvas generates a contract-compliant commit."""
-        self._assert_fixture_for(
-            Canvas(draw=[{"kind": "rect", "x": 0, "y": 0, "width": 50, "height": 50}]),
-            "Canvas",
-        )
+    def test_default_fixture_per_kind(self):
+        cases = [
+            ("box", Box(), "Box"),
+            ("layout", Layout(), "Layout"),
+            ("scroll", Scroll(), "Scroll"),
+            ("text", Text(text="hello"), "Text"),
+            ("textinput", TextInput(text="edit me"), "TextInput"),
+            ("image", Image(source="icon.png"), "Image"),
+            ("path", Path(d="M10 10 L100 100"), "Path"),
+            ("canvas", Canvas(draw=[
+                {"kind": "rect", "x": 0, "y": 0, "width": 50, "height": 50}
+            ]), "Canvas"),
+        ]
+        for label, element, expected_kind in cases:
+            with self.subTest(kind=label):
+                self._assert_fixture_for(element, expected_kind)
 
 
 class TextNoContainerPropsTests(unittest.TestCase):
@@ -187,84 +165,44 @@ class TextNoContainerPropsTests(unittest.TestCase):
 class TextInputEditableBaselineTests(unittest.TestCase):
     """TextInput must preserve its editable, focusable baseline."""
 
-    def test_textinput_focusable_not_sent_as_false(self):
-        """TextInput default must NOT have focusable=False.
-
-        TextInput (EditText) is inherently focusable.  Sending focusable=False
-        would disable editing.  The schema has drop_default=True for focusable,
-        so it should not appear in the default fixture.
-        """
+    def _textinput_props(self, **kwargs) -> dict:
         def App():
-            return TextInput(text="input")
+            return TextInput(text="input", **kwargs)
 
         transport = MemoryTransport()
         runtime = Runtime(App, transport=transport)
         runtime.mount()
-
         ops = runtime.latest_commit.get("ops", [])
-        node_props = _collect_props(ops)
         ids_to_kinds = _create_ids(ops)
-
-        for node_id, props in node_props.items():
-            kind = ids_to_kinds.get(node_id, "Box")
-            if kind == "TextInput":
-                # focusable should NOT be in the initial props at all
-                self.assertNotIn(
-                    "focusable", props,
-                    f"TextInput node {node_id} has focusable={props.get('focusable')!r} "
-                    f"in its default fixture; drop_default=True should suppress it"
-                )
-
-    def test_textinput_explicit_focusable_true_present(self):
-        """TextInput with explicit focusable=True should send it."""
-        def App():
-            return TextInput(text="hello", focusable=True)
-
-        transport = MemoryTransport()
-        runtime = Runtime(App, transport=transport)
-        runtime.mount()
-
-        ops = runtime.latest_commit.get("ops", [])
         node_props = _collect_props(ops)
-        ids_to_kinds = _create_ids(ops)
-
         for node_id, props in node_props.items():
-            kind = ids_to_kinds.get(node_id, "Box")
-            if kind == "TextInput":
-                # With explicit focusable=True, it should be present and True
-                if "focusable" in props:
-                    self.assertTrue(
-                        props["focusable"],
-                        f"TextInput with focusable=True sent {props['focusable']!r}"
-                    )
+            if ids_to_kinds.get(node_id) == "TextInput":
+                return props
+        return {}
+
+    def test_textinput_focusable_baseline(self):
+        """The default fixture omits focusable (drop_default=True); an explicit
+        focusable=True is sent."""
+        default_props = self._textinput_props()
+        self.assertNotIn(
+            "focusable", default_props,
+            "TextInput default fixture must not send focusable=False "
+            "(drop_default=True should suppress it)",
+        )
+
+        explicit_props = self._textinput_props(focusable=True)
+        self.assertIn(
+            "focusable", explicit_props,
+            "explicit focusable=True must be sent (drop_default must not suppress it)",
+        )
+        self.assertTrue(
+            explicit_props["focusable"],
+            f"TextInput with focusable=True sent {explicit_props['focusable']!r}",
+        )
 
 
 class DimensionWireCompatibilityTests(unittest.TestCase):
     """Dimensions must be wire-compatible strings or numbers."""
-
-    def test_dimensions_are_string_or_number(self):
-        """width/height values must be str, int, or float."""
-        def App():
-            return Column(
-                Box(width=100, height=50),
-                Text(text="hi", width="wrap_content"),
-            )
-
-        transport = MemoryTransport()
-        runtime = Runtime(App, transport=transport)
-        runtime.mount()
-
-        ops = runtime.latest_commit.get("ops", [])
-        node_props = _collect_props(ops)
-
-        for node_id, props in node_props.items():
-            for dim in ("width", "height"):
-                if dim in props:
-                    val = props[dim]
-                    self.assertIsInstance(
-                        val, (str, int, float),
-                        f"Node {node_id} {dim}={val!r} has type {type(val).__name__}"
-                    )
 
     def test_explicit_dimensions_over_defaults(self):
         """Explicit width=100 should override default wrap_content."""

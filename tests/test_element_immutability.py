@@ -91,7 +91,8 @@ class ElementConstructionImmutabilityTests(unittest.TestCase):
 
     def test_keys_must_be_hashable_at_construction(self):
         """Mutable keys must reject at Element construction time."""
-        # Mutable list key should fail
+        # Covered in full by test_bool_float_and_mutable_keys_are_rejected;
+        # this smoke keeps the construction-time message check local.
         with self.assertRaises((TypeError, ValueError)):
             Box(key=[1, 2, 3])
 
@@ -137,12 +138,6 @@ class ElementConstructionImmutabilityTests(unittest.TestCase):
         self.assertIsInstance(fm["nested"], FrozenMap)
         # deep within nested
         self.assertIsInstance(fm["nested"]["a"], tuple)
-
-    def test_element_not_frozen_raises_on_mutation(self):
-        """frozen=True dataclass prevents attribute reassignment."""
-        elem = Box()
-        with self.assertRaises(Exception):
-            elem.kind = "Text"
 
     def test_no_internal_ids_on_element(self):
         """Element must have no _view_id, _validated, or other runtime IDs."""

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.material._callbacks import (
+from vyne_material._callbacks import (
     CallbackAdapter,
     prepare_handler,
     prepare_value_binding,

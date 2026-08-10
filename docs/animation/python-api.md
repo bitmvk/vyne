@@ -129,26 +129,11 @@ Validation:
 - expressions cannot cross Runtime instances
 - results must stay finite
 
-## Legacy AnimatedValue
-
-```python
-position = AnimatedValue(72, duration=80, easing="ease_out",
-                         retarget="maintain_velocity")
-Box(translation_x=position)
-```
-
-- target-driven: the first target applies immediately; later targets
-  animate from the live displayed value
-- arithmetic returns another AnimatedValue with matching motion settings
-- supports Canvas fields, retarget policies, and generic springs
-  (`easing="spring"`)
-
 ## Wire encoding
 
-`AnimatedValue`/`AnimatedNode` lower to protocol markers:
+`AnimatedNode` lowers to a protocol marker:
 
 ```json
-{ "__vyne_animated_value__": true, "value": ..., "duration": ... }
 { "__vyne_animated_node__": true, "value": ..., "expression": {...} }
 ```
 

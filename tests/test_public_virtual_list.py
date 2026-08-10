@@ -7,6 +7,8 @@ from vyne import Column, List, ListController, Text, state
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import SilentTransport
+
 
 def _list(
     data=tuple(range(1000)),
@@ -289,15 +291,6 @@ def test_programmatic_window_rebounds_when_data_shrinks_before_metrics() -> None
 
 
 def test_unknown_shrink_snapshot_restores_bounded_offset() -> None:
-    class SilentTransport:
-        preflights_commits = False
-
-        def __init__(self):
-            self.messages = []
-
-        def send(self, message):
-            self.messages.append(message)
-
     controls = {}
 
     def app():

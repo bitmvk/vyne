@@ -331,10 +331,7 @@ class CanvasOpIdentity:
         def identity_value(value: object) -> object:
             if (
                 isinstance(value, Mapping)
-                and (
-                    value.get("__vyne_animated_value__") is True
-                    or value.get("__vyne_animated_node__") is True
-                )
+                and value.get("__vyne_animated_node__") is True
             ):
                 # Target and motion settings change over time; neither is the
                 # semantic identity of the drawing operation.

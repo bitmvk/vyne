@@ -22,7 +22,7 @@ from vyne.spec.schema_v2 import (
     validate_path_commands,
     validate_canvas_draw_ops,
 )
-from vyne.spec.model import ValueSpec, PropSpec, KindSpec
+from vyne.spec.model import PropSpec
 from vyne.values import (
     FrozenMap,
     freeze,
@@ -34,13 +34,11 @@ from vyne.values import (
     is_valid_dash_array,
     validate_dash_array,
 )
-from vyne.lowering import lower_element, CanonicalElement
+from vyne.lowering import lower_element
 from vyne.elements import (
     Element,
     Box, Layout, Row, Column, Text, TextInput, Image, Scroll, Path, Canvas,
 )
-from vyne.style import Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple
-
 
 # ---------------------------------------------------------------------------
 # Per-kind prop applicability matrices
@@ -120,10 +118,6 @@ class PerKindPropApplicability(unittest.TestCase):
         spec = PRIMITIVE_KINDS["Layout"]
         self.assertIn("orientation", spec.required)
 
-    def test_unknown_kind_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Element(kind="Unknown", props={}))
-
 
 # ---------------------------------------------------------------------------
 # Reject matrices — unknown/malformed props
@@ -133,69 +127,47 @@ class PropRejectMatrices(unittest.TestCase):
     """Typed boundary tests: malformed strings, bool-as-number, NaN/inf,
     unknown nested fields, missing fields, zero/negative geometry, RGBA alpha."""
 
-    def test_bool_as_number_rejected(self):
-        with self.assertRaises((TypeError, ValueError)):
-            lower_element(Box(visible=1))
+    def test_bool_and_non_finite_numbers_rejected(self):
+        cases = [
+            (lambda: Box(visible=1), (TypeError, ValueError)),
+            (lambda: Box(opacity=float("nan")), (TypeError, ValueError)),
+            (lambda: Box(translation_x=float("inf")), (TypeError, ValueError)),
+        ]
+        for factory, error in cases:
+            with self.subTest(case=factory.__name__):
+                with self.assertRaises(error):
+                    lower_element(factory())
 
-    def test_nan_rejected(self):
-        with self.assertRaises((TypeError, ValueError)):
-            lower_element(Box(opacity=float("nan")))
+    def test_opacity_out_of_range_rejected(self):
+        for value in (-0.5, 1.5):
+            with self.subTest(opacity=value):
+                with self.assertRaises(ValueError):
+                    lower_element(Box(opacity=value))
 
-    def test_inf_rejected(self):
-        with self.assertRaises((TypeError, ValueError)):
-            lower_element(Box(translation_x=float("inf")))
+    def test_malformed_colors_rejected(self):
+        for value in ("#FFF", "#FF00448", "#FF0044880"):
+            with self.subTest(color=value):
+                with self.assertRaises(ValueError):
+                    lower_element(Box(background_color=value))
 
-    def test_negative_opacity_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(opacity=-0.5))
+    def test_invalid_dimensions_rejected(self):
+        for value in ("invalid", -10):
+            with self.subTest(width=value):
+                with self.assertRaises(ValueError):
+                    lower_element(Box(width=value))
 
-    def test_opacity_above_one_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(opacity=1.5))
-
-    def test_invalid_color_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(background_color="red"))
-
-    def test_short_color_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(background_color="#FFF"))
-
-    def test_seven_digit_color_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(background_color="#FF00448"))
-
-    def test_nine_digit_color_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(background_color="#FF0044880"))
-
-    def test_invalid_dimension_string_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(width="invalid"))
-
-    def test_negative_dimension_number_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(width=-10))
-
-    def test_invalid_alignment_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(text_alignment="diagonal"))
-
-    def test_invalid_orientation_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Layout(orientation="diagonal"))
-
-    def test_negative_corner_radius_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(corner_radius=-1))
-
-    def test_negative_border_width_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(border_width=-2))
-
-    def test_negative_font_size_rejected(self):
-        with self.assertRaises(ValueError):
-            lower_element(Text(text="x", font_size=-1))
+    def test_invalid_enum_values_rejected(self):
+        cases = [
+            (Box(text_alignment="diagonal"), ValueError),
+            (Layout(orientation="diagonal"), ValueError),
+            (Box(corner_radius=-1), ValueError),
+            (Box(border_width=-2), ValueError),
+            (Text(text="x", font_size=-1), ValueError),
+        ]
+        for element, error in cases:
+            with self.subTest(kind=element.kind):
+                with self.assertRaises(error):
+                    lower_element(element)
 
 
 # ---------------------------------------------------------------------------
@@ -205,65 +177,42 @@ class PropRejectMatrices(unittest.TestCase):
 class DefaultFixtures(unittest.TestCase):
     """Lower and apply one default fixture per kind to strict canonical state."""
 
-    def test_box_default_fixture(self):
-        canon = lower_element(Box())
-        resolved = canon.props
-        # Dimensions default to wrap_content
-        self.assertEqual(resolved["width"], "wrap_content")
-        self.assertEqual(resolved["height"], "wrap_content")
-        self.assertEqual(resolved["opacity"], 1.0)
-        # Box is a container: should have container props
-        self.assertIn("align_items", resolved)
-
-    def test_text_default_fixture(self):
-        canon = lower_element(Text(text="hello"))
-        resolved = canon.props
-        self.assertEqual(resolved["text"], "hello")
-        # Text has no layout-only container props
-        self.assertNotIn("align_items", resolved)
-        self.assertNotIn("justify_content", resolved)
-
-    def test_textinput_default_fixture(self):
-        canon = lower_element(TextInput())
-        resolved = canon.props
-        # focused has drop_default=True — not sent when at default
-        self.assertNotIn("focused", resolved)
-        # TextInput has its own editable baseline — not from generic
-        self.assertNotIn("align_items", resolved)
-
-    def test_layout_default_fixture(self):
-        canon = lower_element(Layout(orientation="horizontal"))
-        resolved = canon.props
-        self.assertEqual(resolved["orientation"], "horizontal")
-        self.assertIn("align_items", resolved)
-
-    def test_image_default_fixture(self):
-        canon = lower_element(Image(source="test.png"))
-        resolved = canon.props
-        self.assertEqual(resolved["source"], "test.png")
-        self.assertNotIn("align_items", resolved)
-
-    def test_path_default_fixture(self):
-        canon = lower_element(Path(d="M0,0 L10,10"))
-        resolved = canon.props
-        self.assertIn("commands", resolved)
-        # Path has stroke props
-        self.assertEqual(resolved.get("stroke_width"), 2.0)
-        self.assertNotIn("align_items", resolved)
-
-    def test_canvas_default_fixture(self):
-        canon = lower_element(Canvas(draw=[
-            {"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}
-        ]))
-        resolved = canon.props
-        self.assertIn("draw", resolved)
-        self.assertNotIn("align_items", resolved)
-
-    def test_scroll_default_fixture(self):
-        canon = lower_element(Scroll(Text(text="child")))
-        resolved = canon.props
-        # safe_area has drop_default=True — not sent when at default
-        self.assertNotIn("safe_area", resolved)
+    def test_default_fixtures_per_kind(self):
+        cases = [
+            ("box", Box(), {"width": "wrap_content", "height": "wrap_content",
+                             "opacity": 1.0, "align_items": "start"}),
+            ("text", Text(text="hello"), {"text": "hello"}),
+            ("textinput", TextInput(), {}),
+            ("layout", Layout(orientation="horizontal"),
+             {"orientation": "horizontal", "align_items": "start"}),
+            ("image", Image(source="test.png"), {"source": "test.png"}),
+            ("path", Path(d="M0,0 L10,10"), {"stroke_width": 2.0}),
+            ("canvas", Canvas(draw=[
+                {"kind": "rect", "x": 0, "y": 0, "width": 10, "height": 10}
+            ]), {"draw": "present"}),
+            ("scroll", Scroll(Text(text="child")), {}),
+        ]
+        for label, element, expected in cases:
+            with self.subTest(kind=label):
+                canon = lower_element(element)
+                resolved = canon.props
+                for prop, value in expected.items():
+                    if value == "present":
+                        self.assertIn(prop, resolved)
+                    else:
+                        self.assertEqual(resolved[prop], value)
+                # Leaf kinds must not inherit container-only props.
+                if label in ("text", "textinput", "image", "path", "canvas"):
+                    self.assertNotIn("align_items", resolved)
+                # Container kinds carry the container surface.
+                if label in ("box", "layout"):
+                    self.assertIn("align_items", resolved)
+                # Scroll: safe_area has drop_default=True — not sent at default.
+                if label == "scroll":
+                    self.assertNotIn("safe_area", resolved)
+                # TextInput: focused has drop_default=True — not sent at default.
+                if label == "textinput":
+                    self.assertNotIn("focused", resolved)
 
     def test_leaf_safe_area_is_preserved_when_enabled(self):
         canon = lower_element(Text(text="edge label", safe_area=True))

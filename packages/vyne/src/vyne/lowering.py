@@ -32,9 +32,8 @@ from typing import Any
 
 from vyne.animations import (
     AnimatedNode,
-    AnimatedValue,
     encode_animated_values,
-    is_animated_value_payload,
+    is_animated_node_payload,
 )
 from vyne.motion import CanvasOpIdentity
 from vyne.events import event_delivery
@@ -130,7 +129,7 @@ def lower_element(
         # Canonicalize raw animated values: extension constructors build
         # Element directly and may bypass _widget's encoding, so the marker
         # normalization lives here — the single validation point.
-        if isinstance(value, (AnimatedNode, AnimatedValue)):
+        if isinstance(value, AnimatedNode):
             value = encode_animated_values(value)
             resolved[name] = value
         # Remove None values early — they were explicit-null defaults or noise.
@@ -159,7 +158,7 @@ def lower_element(
             # commit time.
             from vyne.protocol import ensure_bridge_value
             ensure_bridge_value(value, prop_name=name)
-        if is_animated_value_payload(value) and (
+        if is_animated_node_payload(value) and (
             prop_spec is None or not prop_spec.animatable
         ):
             raise ValueError(

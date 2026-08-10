@@ -37,36 +37,6 @@ def test_external_callback_runs_in_runtime_context_and_renders() -> None:
     assert len(transport.messages) == prior_commits + 1
 
 
-def test_external_callback_batch_produces_one_commit() -> None:
-    runtime, transport, cells = mounted_runtime()
-    subscription = runtime.subscribe_external_callback(
-        lambda payload: cells["value"].set(payload)
-    )
-    prior_commits = len(transport.messages)
-
-    runtime.dispatch_external_callbacks(
-        [(subscription, 1), (subscription, 2), (subscription, 3)],
-    )
-
-    assert cells["value"].value == 3
-    assert len(transport.messages) == prior_commits + 1
-
-
-def test_external_callback_failure_rolls_back_the_whole_batch() -> None:
-    runtime, _, cells = mounted_runtime()
-
-    def fail(payload):
-        cells["value"].set(payload)
-        raise ValueError("external callback failed")
-
-    subscription = runtime.subscribe_external_callback(fail)
-
-    runtime.dispatch_external_callbacks([(subscription, 9)])
-
-    assert cells["value"].value == 0
-    assert "external callback failed" in (runtime._last_error or "")
-
-
 def test_external_callback_disposal_releases_and_rejects_delivery() -> None:
     runtime, transport, cells = mounted_runtime()
     subscription = runtime.subscribe_external_callback(

@@ -12,15 +12,13 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.values import FrozenMap
-from vyne.lowering import lower_element, CanonicalElement
+from vyne.lowering import lower_element
 from vyne.elements import (
-    Box, Text, Layout, Column,
+    Box, Text,
 )
 from vyne.style import (
-    Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple, Shape,
+    Style, Decoration, Stroke, CornerRadius, Shadow, Ripple,
 )
-from vyne.spec.schema_v2 import ALL_PROPS
 
 
 class PrecedenceBasicTests(unittest.TestCase):
@@ -58,12 +56,6 @@ class PrecedenceBasicTests(unittest.TestCase):
             Box(opacity=0.3, style=Style())  # Style doesn't have opacity...
         )
         self.assertEqual(canon.props["opacity"], 0.3)
-
-        # Style with explicit will lose to explicit
-        canon2 = lower_element(
-            Box(opacity=0.3, style=Style())
-        )
-        self.assertEqual(canon2.props["opacity"], 0.3)
 
     def test_decoration_overrides_defaults(self):
         """Decoration fill overrides the background_color default."""
@@ -190,22 +182,6 @@ class ShorthandPrecedenceTests(unittest.TestCase):
         self.assertEqual(canon.props["corner_radius_top_left"], 3,
             "Explicit corner must override decoration corners")
         self.assertEqual(canon.props["corner_radius_top_right"], 8)
-
-
-class DefaultExplicitEdgeTests(unittest.TestCase):
-    """Explicit default values vs style precedence."""
-
-    def test_explicit_value_same_as_default_still_overrides_style(self):
-        """Even if the explicit value equals the default, it should override
-        style because the user intentionally wrote it."""
-        # Find the default for background_color
-        bg_default_spec = ALL_PROPS.get("background_color")
-        # The explicit prop should win over style even if it's the default
-        canon = lower_element(
-            Box(background_color="#FFFFFF",
-                style=Style(background_color="#FF0000"))
-        )
-        self.assertEqual(canon.props["background_color"], "#FFFFFF")
 
 
 class StyleDecorationCombinedTests(unittest.TestCase):

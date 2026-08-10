@@ -15,11 +15,15 @@ import unittest
 from vyne.scheduler import CommitCoordinator, AcknowledgementMap
 from vyne.render_model import RenderNode
 
+from tests.support.runtime_helpers import reserve
 
-def _reserve(coordinator: CommitCoordinator, revision: int) -> None:
-    """Complete the same provisional-send transition used by Runtime."""
-    coordinator.reserve_send(revision)
-    coordinator.finish_send(revision)
+
+def _stage(c: CommitCoordinator, **kwargs) -> RenderNode:
+    """Stage the standard single-node candidate used by most tests."""
+    root = RenderNode(id=1, kind="Box")
+    idx = {1: root}
+    c.stage_candidate(root, idx, next_node_id=2, **kwargs)
+    return root
 
 
 class CoordinatorLifecycleTests(unittest.TestCase):
@@ -34,23 +38,17 @@ class CoordinatorLifecycleTests(unittest.TestCase):
 
     def test_stage_and_reserve_candidate(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
+        root = _stage(c)
         self.assertTrue(c.has_candidate())
 
-        _reserve(c, 1)
+        reserve(c, 1)
         self.assertTrue(c.in_flight)
         self.assertEqual(c.in_flight_revision, 1)
 
     def test_promote_transitions_to_accepted(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 1)
+        root = _stage(c)
+        reserve(c, 1)
         self.assertTrue(c.promote(1))
 
         self.assertFalse(c.in_flight)
@@ -60,21 +58,25 @@ class CoordinatorLifecycleTests(unittest.TestCase):
 
     def test_promote_stale_revision_ignored(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 2)  # revision 2 in flight
+        root = _stage(c)
+        reserve(c, 2)  # revision 2 in flight
         self.assertFalse(c.promote(1))  # stale ack for revision 1
         self.assertTrue(c.in_flight)  # still in flight
 
+    def test_double_ack_does_not_double_promote(self):
+        """A duplicate OK ack for an already-promoted revision is ignored."""
+        c = CommitCoordinator()
+        root = _stage(c)
+        reserve(c, 1)
+        self.assertTrue(c.promote(1))
+        self.assertFalse(c.promote(1))  # duplicate ack
+        self.assertFalse(c.in_flight)
+        self.assertEqual(c.accepted_revision, 1)
+
     def test_reject_known_discards_candidate(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 1)
+        root = _stage(c)
+        reserve(c, 1)
         self.assertTrue(c.reject_known(1))
 
         self.assertFalse(c.in_flight)
@@ -84,21 +86,15 @@ class CoordinatorLifecycleTests(unittest.TestCase):
 
     def test_reject_known_stale_ignored(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 2)
+        root = _stage(c)
+        reserve(c, 2)
         self.assertFalse(c.reject_known(1))  # stale
         self.assertTrue(c.in_flight)
 
     def test_report_unknown_retains_desired_candidate(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 1)
+        root = _stage(c)
+        reserve(c, 1)
         c.report_unknown()
 
         self.assertFalse(c.in_flight)
@@ -107,21 +103,15 @@ class CoordinatorLifecycleTests(unittest.TestCase):
 
     def test_desired_root_falls_back_to_accepted(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 1)
+        root = _stage(c)
+        reserve(c, 1)
         c.promote(1)
 
         self.assertIs(c.desired_root, root)
 
     def test_desired_root_exposes_unaccepted_candidate_for_recovery(self):
         c = CommitCoordinator()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2)
+        root = _stage(c)
         self.assertIs(c.desired_root, root)
         self.assertIsNone(c.accepted_root)
 
@@ -132,7 +122,7 @@ class CoordinatorLifecycleTests(unittest.TestCase):
     def test_reserve_without_candidate_raises(self):
         c = CommitCoordinator()
         with self.assertRaises(RuntimeError):
-            _reserve(c, 1)
+            reserve(c, 1)
 
     def test_effect_send_reservation_works_without_candidate(self):
         """Effect-only commits use the same provisional receipt barrier."""
@@ -149,7 +139,7 @@ class CoordinatorLifecycleTests(unittest.TestCase):
         root = RenderNode(id=1, kind="Box")
         idx = {1: root}
         c.stage_candidate(root, idx, next_node_id=2)
-        _reserve(c, 1)
+        reserve(c, 1)
         c.promote(1)
 
         # Now reserve an effect commit without staging a tree.
@@ -174,7 +164,7 @@ class ImperativeBindingPromotionTests(unittest.TestCase):
             next_node_id=2,
             imperative_bindings={target: intent},
         )
-        _reserve(coordinator, 1)
+        reserve(coordinator, 1)
         coordinator.promote(1)
 
         self.assertEqual(
@@ -198,7 +188,7 @@ class ImperativeBindingPromotionTests(unittest.TestCase):
             next_node_id=2,
             imperative_bindings={target: accepted_intent},
         )
-        _reserve(coordinator, 1)
+        reserve(coordinator, 1)
         coordinator.promote(1)
         coordinator.take_imperative_transition()
 
@@ -208,7 +198,7 @@ class ImperativeBindingPromotionTests(unittest.TestCase):
             next_node_id=2,
             imperative_bindings={target: rejected_intent},
         )
-        _reserve(coordinator, 2)
+        reserve(coordinator, 2)
         coordinator.reject_known(2)
 
         self.assertEqual(
@@ -226,11 +216,8 @@ class RefPromotionTests(unittest.TestCase):
 
         c = CommitCoordinator()
         ref = Ref()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2, ref_map={1: ref})
-        _reserve(c, 1)
+        root = _stage(c, ref_map={1: ref})
+        reserve(c, 1)
         c.promote(1)
 
         self.assertIn(1, c.ref_map)
@@ -241,11 +228,8 @@ class RefPromotionTests(unittest.TestCase):
 
         c = CommitCoordinator()
         ref = Ref()
-        root = RenderNode(id=1, kind="Box")
-        idx = {1: root}
-
-        c.stage_candidate(root, idx, next_node_id=2, ref_map={1: ref})
-        _reserve(c, 1)
+        root = _stage(c, ref_map={1: ref})
+        reserve(c, 1)
         c.reject_known(1)
 
         self.assertNotIn(1, c.ref_map)
@@ -261,14 +245,14 @@ class RefPromotionTests(unittest.TestCase):
 
         # Set up with ref attached.
         c.stage_candidate(root, idx, next_node_id=2, ref_map={1: ref})
-        _reserve(c, 1)
+        reserve(c, 1)
         c.promote(1)
         self.assertIn(1, c.ref_map)
 
         # Now stage a new candidate that removes node 1.
         new_root = RenderNode(id=2, kind="Text")
         c.stage_candidate(new_root, {2: new_root}, next_node_id=3, ref_map={})
-        _reserve(c, 2)
+        reserve(c, 2)
         c.promote(2)
 
         self.assertNotIn(1, c.ref_map)
@@ -283,7 +267,7 @@ class RefPromotionTests(unittest.TestCase):
         idx = {1: root, 2: RenderNode(id=2, kind="Text")}
 
         c.stage_candidate(root, idx, next_node_id=3, ref_map={1: ref1, 2: ref2})
-        _reserve(c, 1)
+        reserve(c, 1)
         c.promote(1)
 
         refs = c.clear_all_refs()

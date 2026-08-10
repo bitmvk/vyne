@@ -9,6 +9,8 @@ from vyne.runtime import Runtime
 from vyne.state import current_runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import SilentTransport
+
 
 def _listener(runtime: Runtime, event_name: str = "click") -> tuple[int, int]:
     for node in runtime._coordinator.accepted_index.values():
@@ -140,15 +142,6 @@ class RuntimeEffectTests(unittest.TestCase):
         self.assertEqual(runtime._effect_pending, [])
 
     def test_known_rejection_rolls_back_state_and_drops_effect(self) -> None:
-        class SilentTransport:
-            preflights_commits = False
-
-            def __init__(self) -> None:
-                self.messages: list[dict] = []
-
-            def send(self, message: dict) -> None:
-                self.messages.append(message)
-
         scroll_ref = Ref()
 
         def app():
@@ -202,15 +195,6 @@ class RuntimeEffectTests(unittest.TestCase):
         self.assertEqual(runtime._effect_pending, [])
 
     def test_unknown_result_resets_snapshot_without_replaying_effect(self) -> None:
-        class SilentTransport:
-            preflights_commits = False
-
-            def __init__(self) -> None:
-                self.messages: list[dict] = []
-
-            def send(self, message: dict) -> None:
-                self.messages.append(message)
-
         scroll_ref = Ref()
         transport = SilentTransport()
         runtime = Runtime(
@@ -242,15 +226,6 @@ class RuntimeEffectTests(unittest.TestCase):
         self.assertGreater(runtime.revision, uncertain_revision)
 
     def test_effect_waiting_behind_rejected_commit_is_not_lost(self) -> None:
-        class SilentTransport:
-            preflights_commits = False
-
-            def __init__(self) -> None:
-                self.messages: list[dict] = []
-
-            def send(self, message: dict) -> None:
-                self.messages.append(message)
-
         scroll_ref = Ref()
         clicks = 0
 
@@ -323,15 +298,6 @@ class RuntimeEffectTests(unittest.TestCase):
         self.assertIsInstance(failure[0], ValueError)
 
     def test_effect_waiting_behind_tree_commit_flushes_after_ack(self) -> None:
-        class SilentTransport:
-            preflights_commits = False
-
-            def __init__(self) -> None:
-                self.messages: list[dict] = []
-
-            def send(self, message: dict) -> None:
-                self.messages.append(message)
-
         scroll_ref = Ref()
         clicks = 0
 

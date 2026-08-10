@@ -814,10 +814,10 @@ bound presentation slots on the same native frame. Python is involved only
 when starting, retargeting, composing, or receiving a terminal lifecycle
 event.
 
-The older `AnimatedValue(target, duration=..., easing=..., retarget=...)`
-surface remains a compatibility API. Its first target snaps into place;
-subsequent target changes animate from the current presentation value.
-`retarget="maintain_velocity"` carries the current derivative into a
+The imperative `animate(...)` API and the persistent-driver `Animated` API are
+the two supported animation surfaces. `animate(...)` first target snaps into
+place; subsequent imperative commands animate from the current presentation
+value. `retarget="maintain_velocity"` carries the current derivative into a
 replacement tween; tween defaults to `"restart"` and spring defaults to
 `"maintain_velocity"`. Canvas drawing topology must remain stable across
 target changes; non-animated drawing fields update immediately.

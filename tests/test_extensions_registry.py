@@ -10,6 +10,12 @@ from __future__ import annotations
 
 import unittest
 
+from tests.support.extension_kinds import (
+    KINDS,
+    activate_extension_kinds,
+    deactivate_extension_kinds,
+)
+
 from vyne.extensions_registry import (
     GENERIC_PROPS,
     ExtensionKindInfo,
@@ -23,17 +29,13 @@ from vyne.extensions_registry import (
     sync_from_host,
 )
 
-KINDS = {
-    "TimerRing": (["progress", "ring_color"], ["complete"], [False]),
-}
-
 
 def setUpModule() -> None:
-    sync_from_host(KINDS)
+    activate_extension_kinds()
 
 
 def tearDownModule() -> None:
-    sync_from_host({})
+    deactivate_extension_kinds()
 
 
 class SyncFromHostTests(unittest.TestCase):

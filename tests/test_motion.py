@@ -23,12 +23,6 @@ from vyne.motion import (
     Tween,
     motion_command_to_dict,
 )
-from vyne.animations import (
-    ANIMATED_VALUE_MARKER,
-    AnimatedValue,
-    encode_animated_values,
-    is_animated_value_payload,
-)
 from vyne.protocol import validate_message
 
 
@@ -319,68 +313,6 @@ class CanvasOpIdentityTests(unittest.TestCase):
         )
         self.assertEqual(
             restab[1][CanvasOpIdentity.RESERVED_ID_KEY], id_rect
-        )
-
-
-class AnimatedValueTests(unittest.TestCase):
-    """Declarative AnimatedValue integration."""
-
-    def test_to_spec_tween(self):
-        av = AnimatedValue(
-            value=0.5,
-            duration=300,
-            easing="ease_out",
-            retarget="maintain_velocity",
-        )
-        spec = av.to_spec()
-        self.assertIsInstance(spec, Tween)
-        self.assertEqual(spec.duration_ms, 300)
-        self.assertEqual(spec.easing, "ease_out")
-        self.assertEqual(spec.retarget, RetargetPolicy.MAINTAIN_VELOCITY)
-
-    def test_to_spec_spring(self):
-        av = AnimatedValue(
-            value=0.5, easing="spring",
-            damping_ratio=0.7, stiffness=400.0,
-        )
-        spec = av.to_spec()
-        self.assertIsInstance(spec, Spring)
-        self.assertEqual(spec.damping_ratio, 0.7)
-        self.assertEqual(spec.stiffness, 400.0)
-
-    def test_to_protocol_value_with_op_id(self):
-        av = AnimatedValue(value=0.8, duration=200)
-        payload = av.to_protocol_value(op_id="op5_circle")
-        self.assertTrue(payload[ANIMATED_VALUE_MARKER])
-        self.assertEqual(payload["value"], 0.8)
-        self.assertEqual(payload["retarget"], "restart")
-        self.assertEqual(payload["_vyne_op_id"], "op5_circle")
-
-    def test_arithmetic_preserves_spec(self):
-        a = AnimatedValue(value=10, duration=200, easing="ease_in")
-        b = a + 5
-        self.assertEqual(b.value, 15)
-        self.assertEqual(b.duration, 200)
-        self.assertEqual(b.easing, "ease_in")
-
-    def test_arithmetic_rejects_mismatched_settings(self):
-        a = AnimatedValue(value=10, duration=200, easing="ease_in")
-        b = AnimatedValue(value=5, duration=300, easing="ease_out")
-        with self.assertRaises(ValueError):
-            a + b
-
-    def test_clamp(self):
-        av = AnimatedValue(value=5)
-        self.assertEqual(av.clamp(minimum=0, maximum=10).value, 5)
-        self.assertEqual(av.clamp(minimum=10).value, 10)
-        self.assertEqual(av.clamp(maximum=2).value, 2)
-
-    def test_encode_animated_values_nested(self):
-        av = AnimatedValue(value=0.5)
-        data = {"outer": [{"inner": av}]}
-        encoded = encode_animated_values(data)
-        self.assertTrue(
-            is_animated_value_payload(encoded["outer"][0]["inner"])
         )
 
 

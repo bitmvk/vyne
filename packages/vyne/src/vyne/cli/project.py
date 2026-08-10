@@ -22,35 +22,19 @@ import os
 from pathlib import Path
 
 from vyne.cli.config import (
+    AppIdentity,
+    AndroidSpec,
     parse_config,
 )
 from vyne.cli.extensions import Extension, discover_extensions
 
 
 @dataclass(frozen=True)
-class AppConfig:
-    name: str
-    label: str
-    package: str
-    module: str
-    source: str
-    version: str
-    version_code: int = 1
-
-
-@dataclass(frozen=True)
-class AndroidConfig:
-    min_sdk: int
-    target_sdk: int
-    compile_sdk: int
-
-
-@dataclass(frozen=True)
 class Project:
     root: Path
     config_path: Path | None
-    app: AppConfig
-    android: AndroidConfig
+    app: AppIdentity
+    android: AndroidSpec
     package_python_dir: Path
     base_project_root: Path
     generated: bool
@@ -117,6 +101,23 @@ class Project:
         """Fully qualified Android component name for ``adb shell am start``."""
         return f"{self.app.package}/dev.vyne.MainActivity"
 
+    @property
+    def material_python_dir(self) -> Path | None:
+        """Separate Material Python source tree, when one is available.
+
+        The framework checkout hosts the Material distribution at
+        ``packages/vyne-material/src``. Generated projects normally install
+        both distributions into one site-packages dir covered by
+        ``framework_python_dir`` and therefore return ``None`` here.
+        """
+        if self.checkout_root is not None:
+            candidate = (
+                self.checkout_root / "packages" / "vyne-material" / "src"
+            )
+            if candidate.is_dir():
+                return candidate
+        return None
+
     def gradle_properties(self) -> list[str]:
         """Build the ``-P`` property list passed to Gradle on the command line.
 
@@ -129,7 +130,8 @@ class Project:
             str(e.res_dir) for e in self.extensions if e.res_dir is not None
         )
         extension_python = ":".join(str(e.python_dir) for e in self.extensions)
-        return [
+        material_dir = self.material_python_dir
+        properties = [
             f"-Pvyne.applicationId={self.app.package}",
             f"-Pvyne.appLabel={self.app.label}",
             f"-Pvyne.appModule={self.app.module}",
@@ -146,6 +148,9 @@ class Project:
             f"-Pvyne.versionName={self.app.version}",
             f"-Pvyne.versionCode={self.app.version_code}",
         ]
+        if material_dir is not None:
+            properties.append(f"-Pvyne.materialPythonDir={material_dir}")
+        return properties
 
 
 def checkout_root_from_package() -> Path | None:
@@ -282,26 +287,11 @@ def _load_generated_project(root: Path, config_path: Path) -> Project:
     raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
     cfg = parse_config(raw, config_path=config_path)
 
-    app = AppConfig(
-        name=cfg.app.name,
-        label=cfg.app.label,
-        package=cfg.app.package,
-        module=cfg.app.module,
-        source=cfg.app.source,
-        version=cfg.app.version,
-        version_code=cfg.app.version_code,
-    )
-    android = AndroidConfig(
-        min_sdk=cfg.android.min_sdk,
-        target_sdk=cfg.android.target_sdk,
-        compile_sdk=cfg.android.compile_sdk,
-    )
-
     return Project(
         root=root,
         config_path=config_path,
-        app=app,
-        android=android,
+        app=cfg.app,
+        android=cfg.android,
         package_python_dir=cfg.paths.package_python_dir,
         base_project_root=cfg.paths.base_project_root,
         generated=True,
@@ -314,15 +304,16 @@ def _load_framework_checkout(root: Path) -> Project:
     return Project(
         root=root,
         config_path=None,
-        app=AppConfig(
+        app=AppIdentity(
             name="Vyne",
             label="Vyne",
             package="dev.vyne",
             module="app",
             source="examples/app.py",
             version="0.1.0a1",
+            version_code=1,
         ),
-        android=AndroidConfig(
+        android=AndroidSpec(
             min_sdk=26,
             target_sdk=35,
             compile_sdk=35,

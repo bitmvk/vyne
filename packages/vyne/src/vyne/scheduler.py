@@ -328,10 +328,6 @@ class CommitCoordinator:
         return dict(self._imperative_bindings)
 
     @property
-    def provisional(self) -> bool:
-        return self._provisional
-
-    @property
     def in_flight(self) -> bool:
         """True when a commit has been sent and we're awaiting ack."""
         return self._in_flight_revision > 0

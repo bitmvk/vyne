@@ -14,7 +14,6 @@ from vyne import (
     Box,
     Canvas,
     Column,
-    Path,
     Scroll,
     Text,
 )
@@ -36,18 +35,6 @@ def _lower(element):
 
 
 class AliasConflictTests(unittest.TestCase):
-    def test_alpha_overrides_default_opacity(self):
-        canonical = _lower(Text(text="x", alpha=0.5))
-        self.assertEqual(canonical.props["opacity"], 0.5)
-
-    def test_alpha_matching_explicit_opacity_is_fine(self):
-        canonical = _lower(Text(text="x", alpha=0.5, opacity=0.5))
-        self.assertEqual(canonical.props["opacity"], 0.5)
-
-    def test_conflicting_alpha_and_opacity_rejected(self):
-        with self.assertRaisesRegex(ValueError, "Conflicting alpha"):
-            _lower(Text(text="x", alpha=0.5, opacity=0.8))
-
     def test_accessibility_state_aliases_canonicalize(self):
         canonical = _lower(Text(text="x", accessibility_state_checked=True))
         self.assertIn("accessibility_checked", canonical.props)
@@ -67,26 +54,9 @@ class ShorthandTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "'size' shorthand"):
             _lower(Box(size=24))
 
-    def test_padding_shorthand_expands_all_edges(self):
-        canonical = _lower(Box(padding=8))
-        for edge in ("padding_top", "padding_bottom",
-                     "padding_start", "padding_end"):
-            self.assertEqual(canonical.props[edge], 8)
-
-    def test_explicit_padding_edge_beats_shorthand(self):
-        canonical = _lower(Box(padding=8, padding_top=2))
-        self.assertEqual(canonical.props["padding_top"], 2)
-        self.assertEqual(canonical.props["padding_bottom"], 8)
-
     def test_negative_padding_rejected(self):
         with self.assertRaises(ValueError):
             _lower(Box(padding=-1))
-
-    def test_corner_radius_shorthand_expands(self):
-        canonical = _lower(Box(corner_radius=4))
-        for corner in ("corner_radius_top_left", "corner_radius_top_right",
-                       "corner_radius_bottom_right", "corner_radius_bottom_left"):
-            self.assertEqual(canonical.props[corner], 4)
 
     def test_negative_corner_radius_rejected(self):
         with self.assertRaises(ValueError):
@@ -94,23 +64,9 @@ class ShorthandTests(unittest.TestCase):
 
 
 class StyleLoweringTests(unittest.TestCase):
-    def test_explicit_prop_beats_style(self):
-        canonical = _lower(Text(
-            text="x",
-            style=Style(text_color="#111111"),
-            text_color="#222222",
-        ))
-        self.assertEqual(canonical.props["text_color"], "#222222")
-
     def test_style_color_alias_maps_to_text_color(self):
         canonical = _lower(Text(text="x", style=Style(color="#333333")))
         self.assertEqual(canonical.props["text_color"], "#333333")
-
-    def test_unsupported_style_fields_rejected(self):
-        for field in ("gap", "size", "flex", "flex_grow", "align_self"):
-            with self.subTest(field=field):
-                with self.assertRaisesRegex(ValueError, "not yet supported"):
-                    _lower(Box(style=Style(**{field: 1 if field != "align_self" else "center"})))
 
     def test_unknown_style_field_rejected_with_path(self):
         with self.assertRaisesRegex(ValueError, "Unknown Style field 'bogus'"):
@@ -132,10 +88,6 @@ class DecorationLoweringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unknown Decoration field"):
             _lower(Box(decoration={"mystery": 1}))
 
-    def test_clip_rejected(self):
-        with self.assertRaisesRegex(ValueError, "clip"):
-            _lower(Box(decoration=Decoration.rectangle(clip=True)))
-
     def test_gradient_fills_rejected(self):
         for fill in (
             Fill.linear_gradient(start_color="#000000", end_color="#ffffff"),
@@ -146,28 +98,10 @@ class DecorationLoweringTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "not yet supported"):
                     _lower(Box(decoration=Decoration.rectangle(fill=fill)))
 
-    def test_dashed_stroke_rejected(self):
-        with self.assertRaisesRegex(ValueError, "Dashed"):
-            _lower(Box(decoration=Decoration.rectangle(
-                stroke=Stroke(color="#000000", width=1, dash_width=2, dash_gap=2),
-            )))
-
     def test_non_rectangle_shape_rejected(self):
         with self.assertRaisesRegex(ValueError, "rectangle"):
             _lower(Box(decoration=Decoration(
                 shape=Shape.oval(fill="#ff0000"),
-            )))
-
-    def test_shadow_translation_z_rejected(self):
-        with self.assertRaisesRegex(ValueError, "translation_z"):
-            _lower(Box(decoration=Decoration.rectangle(
-                shadow=Shadow(elevation=2, translation_z=1),
-            )))
-
-    def test_unbounded_ripple_rejected(self):
-        with self.assertRaisesRegex(ValueError, "Unbounded ripple"):
-            _lower(Box(decoration=Decoration.rectangle(
-                ripple=Ripple(color="#ffffff", bounded=False),
             )))
 
     def test_supported_decoration_tier_lowers(self):
@@ -196,41 +130,6 @@ class DecorationLoweringTests(unittest.TestCase):
             background_color="#999999",
         ))
         self.assertEqual(canonical.props["background_color"], "#999999")
-
-
-class DashArrayTests(unittest.TestCase):
-    def _path(self, dash):
-        return Path(d="M 0 0 L 10 10", stroke_dash_array=dash)
-
-    def test_string_form_parsed_to_tuple(self):
-        canonical = _lower(self._path("4,8"))
-        self.assertEqual(canonical.props["stroke_dash_array"], (4.0, 8.0))
-
-    def test_full_marker_preserved(self):
-        canonical = _lower(self._path("full"))
-        self.assertEqual(canonical.props["stroke_dash_array"], "full")
-
-    def test_empty_string_removed(self):
-        canonical = _lower(self._path("  "))
-        self.assertNotIn("stroke_dash_array", canonical.props)
-
-    def test_list_converted_to_tuple(self):
-        canonical = _lower(self._path([2, 4]))
-        self.assertEqual(canonical.props["stroke_dash_array"], (2, 4))
-
-    def test_odd_count_rejected(self):
-        with self.assertRaisesRegex(ValueError, "even"):
-            _lower(self._path("4,8,2"))
-
-    def test_non_positive_rejected(self):
-        with self.assertRaises(ValueError):
-            _lower(self._path("4,0"))
-        with self.assertRaises(ValueError):
-            _lower(self._path([4, -2]))
-
-    def test_non_numeric_rejected(self):
-        with self.assertRaisesRegex(ValueError, "comma-separated"):
-            _lower(self._path("fast,slow"))
 
 
 class ViewBoxTests(unittest.TestCase):

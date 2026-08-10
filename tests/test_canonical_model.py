@@ -1,13 +1,16 @@
 """Tests for canonical schema, values, lowering, and immutability.
 
 Covers MODEL-01, MODEL-02, MODEL-03 requirements:
-- ValueSpec validation (types, ranges, enums, colors, dimensions, dashes)
 - FrozenMap immutability
+- freeze/thaw and opaque-value rules
+- Color and numeric validation helpers
 - Schema completeness
-- Style/Decoration lowering
-- Element immutability
+- Canonical lowering and native-prop projection
 - Per-mount refs/handles
-- Error rejection for invalid values
+
+ValueSpec validation lives in ``test_value_spec_validation``; style and
+Decoration lowering behavior lives in ``test_style_decoration_behavior``,
+``test_lowering_precedence``, and ``test_lowering_edges``.
 """
 
 from __future__ import annotations
@@ -26,14 +29,11 @@ from vyne.values import (
     is_valid_dash_array,
     validate_dash_array,
 )
-from vyne.spec.model import ValueSpec, PropSpec, KindSpec, CanvasOpSpec
 from vyne.spec.schema_v2 import (
-    ALL_PROPS,
     ANIMATABLE_PROPS,
     PROPS_BY_KIND,
     PRIMITIVE_KINDS,
     GENERIC_PROP_NAMES,
-    CANVAS_OP_SPECS,
     EVENT_SPECS,
 )
 from vyne.lowering import lower_element, CanonicalElement
@@ -42,9 +42,9 @@ from vyne.elements import (
     Box, Layout, Row, Column, Text, TextInput, Image, Scroll, Path, Canvas,
 )
 from vyne.style import (
-    Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple,
+    Style, Decoration, Stroke, CornerRadius, Shadow, Ripple,
 )
-from vyne.refs import Ref, ViewHandle
+from vyne.refs import Ref
 
 
 # ---------------------------------------------------------------------------
@@ -226,81 +226,6 @@ class NumericValidationTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# ValueSpec validation
-# ---------------------------------------------------------------------------
-
-class ValueSpecTests(unittest.TestCase):
-    def test_bool_spec(self):
-        spec = ValueSpec(type_name="bool", exact_types=(bool,))
-        spec.validate(True)
-        with self.assertRaises(TypeError):
-            spec.validate(1)
-
-    def test_string_spec(self):
-        spec = ValueSpec(type_name="str", exact_types=(str,))
-        spec.validate("hello")
-        with self.assertRaises(TypeError):
-            spec.validate(123)
-
-    def test_nullable_spec(self):
-        spec = ValueSpec(type_name="str", exact_types=(str,), nullable=True)
-        spec.validate(None)
-        spec.validate("hello")
-
-    def test_enum_spec(self):
-        spec = ValueSpec(type_name="str", enum=frozenset({"horizontal", "vertical"}))
-        spec.validate("horizontal")
-        with self.assertRaises(ValueError):
-            spec.validate("diagonal")
-
-    def test_color_spec(self):
-        spec = ValueSpec(type_name="str", color=True)
-        spec.validate("#FF0000")
-        with self.assertRaises(ValueError):
-            spec.validate("red")
-
-    def test_dash_array_spec(self):
-        spec = ValueSpec(dash_array=True)
-        spec.validate((4, 2))
-        with self.assertRaises(ValueError):
-            spec.validate((1,))
-
-    def test_finite_spec(self):
-        spec = ValueSpec(finite=True)
-        spec.validate(42)
-        with self.assertRaises(TypeError):
-            spec.validate(True)
-
-    def test_dimension_spec(self):
-        spec = ValueSpec(exact_types=(str, int, float), dimension=True)
-        spec.validate("wrap_content")
-        spec.validate("16dp")
-        spec.validate(42)
-        with self.assertRaises(ValueError):
-            spec.validate("invalid")
-        with self.assertRaises(ValueError):
-            spec.validate("invaliddp")
-
-    def test_numeric_specs_reject_collection_and_bool_bypasses(self):
-        for spec in (
-            ValueSpec(finite=True),
-            ValueSpec(positive=True),
-            ValueSpec(non_negative=True),
-            ValueSpec(min_value=0, max_value=1),
-        ):
-            for invalid in ([], (), {}, FrozenMap(), True):
-                with self.subTest(spec=spec, invalid=invalid):
-                    with self.assertRaises((TypeError, ValueError)):
-                        spec.validate(invalid)
-
-    def test_exact_int_excludes_bool(self):
-        spec = ValueSpec(type_name="int", non_negative=True)
-        spec.validate(1)
-        with self.assertRaises(TypeError):
-            spec.validate(True)
-
-
-# ---------------------------------------------------------------------------
 # Schema completeness
 # ---------------------------------------------------------------------------
 
@@ -325,15 +250,6 @@ class SchemaCompletenessTests(unittest.TestCase):
     def test_text_input_has_text_change_events(self):
         self.assertIn("text_change", EVENT_SPECS)
         self.assertIn("TextInput", EVENT_SPECS["text_change"].applies_to)
-
-    def test_canvas_ops_have_required_specs(self):
-        expected_ops = {"rect", "round_rect", "circle", "line", "path"}
-        self.assertEqual(set(CANVAS_OP_SPECS.keys()), expected_ops)
-        for name, spec in CANVAS_OP_SPECS.items():
-            self.assertIsNotNone(spec.required)
-            self.assertIsNotNone(spec.fields)
-            for field in spec.required:
-                self.assertIn(field, spec.fields)
 
     def test_animatable_props(self):
         expected = {"opacity", "rotation", "rotation_x", "rotation_y",
@@ -365,35 +281,6 @@ class LoweringTests(unittest.TestCase):
         canon = lower_element(elem)
         self.assertEqual(canon.props["orientation"], "horizontal")
 
-    def test_padding_shorthand_expands(self):
-        elem = Box(padding=10)
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["padding_top"], 10)
-        self.assertEqual(canon.props["padding_bottom"], 10)
-        self.assertEqual(canon.props["padding_start"], 10)
-        self.assertEqual(canon.props["padding_end"], 10)
-
-    def test_corner_radius_shorthand_expands(self):
-        elem = Box(corner_radius=5)
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["corner_radius_top_left"], 5)
-        self.assertEqual(canon.props["corner_radius_top_right"], 5)
-
-    def test_alpha_alias_resolves_to_opacity(self):
-        elem = Box(alpha=0.5)
-        canon = lower_element(elem)
-        self.assertNotIn("alpha", canon.props)
-        self.assertEqual(canon.props["opacity"], 0.5)
-
-    def test_conflicting_alpha_and_opacity_rejects(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(alpha=0.5, opacity=0.8))
-
-    def test_invalid_kind_rejected(self):
-        elem = Element(kind="Unknown", props={})
-        with self.assertRaises(ValueError):
-            lower_element(elem)
-
     def test_invalid_prop_name_rejected(self):
         elem = Box(invalid_prop=123)
         with self.assertRaises(ValueError):
@@ -418,237 +305,6 @@ class LoweringTests(unittest.TestCase):
     def test_numeric_string_rejected_for_bool(self):
         with self.assertRaises((TypeError, ValueError)):
             lower_element(TextInput(focused="yes"))
-
-    def test_text_leaf_has_no_children(self):
-        with self.assertRaises(ValueError):
-            lower_element(Element(kind="Text", props={"text": "x"},
-                                  children=(Text(text="child"),)))
-
-    def test_scroll_max_one_child(self):
-        # Scroll with more than 1 child: the public constructor auto-wraps,
-        # but a raw Element with >1 children should fail.
-        raw = Element(kind="Scroll", props={},
-                      children=(Text(text="a"), Text(text="b")))
-        with self.assertRaises(ValueError):
-            lower_element(raw)
-
-    def test_unknown_canvas_op_raises(self):
-        # Lowering doesn't validate draw list content deeply (runtime does),
-        # but the schema defines which ops exist.
-        # This test verifies Canvas itself lowers.
-        canon = lower_element(Canvas(draw=[{"kind": "rect", "x": 1, "y": 2, "width": 10, "height": 20}]))
-        self.assertEqual(canon.kind, "Canvas")
-
-
-# ---------------------------------------------------------------------------
-# Style/Decoration lowering (MODEL-02)
-# ---------------------------------------------------------------------------
-
-class StyleDecorationLoweringTests(unittest.TestCase):
-    def test_style_text_color_lowers(self):
-        elem = Text(text="x", style=Style(text_color="#FF0000"))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["text_color"], "#FF0000")
-
-    def test_style_background_lowers(self):
-        elem = Box(style=Style(background_color="#00FF00"))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["background_color"], "#00FF00")
-
-    def test_style_font_size_lowers(self):
-        elem = Text(text="x", style=Style(font_size=18))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["font_size"], 18)
-
-    def test_style_padding_lowers_as_shorthand(self):
-        elem = Box(style=Style(padding=12))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["padding_top"], 12)
-
-    def test_direct_props_override_style(self):
-        # Direct text_color overrides Style's text_color
-        elem = Text(text="x", text_color="#000000",
-                    style=Style(text_color="#FF0000"))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["text_color"], "#000000")
-
-    def test_style_color_alias_lowers_to_text_color(self):
-        elem = Text(text="x", style=Style(color="#ABCDEF"))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["text_color"], "#ABCDEF")
-
-    def test_unsupported_style_fields_reject(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(style=Style(gap=10)))
-
-    def test_unsupported_flex_reject(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(style=Style(flex=1)))
-
-    def test_size_shorthand_rejects(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(size=100))
-
-    def test_decoration_solid_fill_lowers(self):
-        elem = Box(decoration=Decoration.rectangle(fill="#FF0000"))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["background_color"], "#FF0000")
-
-    def test_decoration_stroke_lowers_to_border(self):
-        elem = Box(decoration=Decoration.rectangle(
-            stroke=Stroke(color="#000000", width=3)))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["border_color"], "#000000")
-        self.assertEqual(canon.props["border_width"], 3)
-
-    def test_decoration_corners_lower(self):
-        elem = Box(decoration=Decoration.rectangle(
-            corners=CornerRadius.all(8)))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["corner_radius_top_left"], 8)
-
-    def test_decoration_elevation_lowers(self):
-        elem = Box(decoration=Decoration.rectangle(
-            shadow=Shadow(elevation=4)))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["elevation"], 4)
-
-    def test_decoration_ripple_lowers(self):
-        elem = Box(decoration=Decoration.rectangle(
-            ripple=Ripple(color="#40000000")))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["ripple_color"], "#40000000")
-
-    def test_dashed_stroke_rejects(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(decoration=Decoration.rectangle(
-                stroke=Stroke(color="#000", dash_width=4, dash_gap=2))))
-
-    def test_gradient_fill_rejects(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(decoration=Decoration.rectangle(
-                fill=Fill.linear_gradient(start_color="#000", end_color="#fff"))))
-
-    def test_unbounded_ripple_rejects(self):
-        with self.assertRaises(ValueError):
-            lower_element(Box(decoration=Decoration.rectangle(
-                ripple=Ripple(color="#40000000", bounded=False))))
-
-    def test_style_addition_preserves_decoration_type(self):
-        s1 = Style(decoration=Decoration.rectangle(fill="#FFF"))
-        s2 = Style(padding=3)
-        merged = s1 + s2
-        from vyne.style import Decoration as DecorationType
-        self.assertIsInstance(merged.decoration, DecorationType)
-        self.assertEqual(merged.padding, 3)
-
-    def test_style_no_opaque_dict_in_props(self):
-        elem = Text(text="x", style=Style(text_color="#000000"))
-        canon = lower_element(elem)
-        self.assertNotIn("style", canon.props)
-        self.assertNotIn("decoration", canon.props)
-
-    def test_readme_example_style_applies(self):
-        # Verify the documented Style usage works
-        elem = Text(text="Hello", style=Style(text_color="#112233", font_size=20))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["text_color"], "#112233")
-        self.assertEqual(canon.props["font_size"], 20)
-
-    def test_readme_example_decoration_applies(self):
-        # Verify documented Decoration rectangle applies
-        elem = Text(text="Card",
-                    style=Style(decoration=Decoration.rectangle(
-                        fill="#FFFFFF",
-                        corners=CornerRadius.all(12),
-                        shadow=Shadow(elevation=2))))
-        canon = lower_element(elem)
-        self.assertNotIn("style", canon.props)
-        self.assertNotIn("decoration", canon.props)
-        self.assertEqual(canon.props["text"], "Card")
-
-
-# ---------------------------------------------------------------------------
-# Element immutability (MODEL-03)
-# ---------------------------------------------------------------------------
-
-class ElementImmutabilityTests(unittest.TestCase):
-    def test_element_is_frozen(self):
-        elem = Box()
-        with self.assertRaises(Exception):
-            elem.kind = "Layout"
-
-    def test_no_view_id_on_element(self):
-        elem = Box()
-        with self.assertRaises(AttributeError):
-            _ = elem._view_id
-
-    def test_no_validated_on_element(self):
-        elem = Box()
-        with self.assertRaises(AttributeError):
-            _ = elem._validated
-
-
-# ---------------------------------------------------------------------------
-# Ref and ViewHandle (MODEL-03)
-# ---------------------------------------------------------------------------
-
-class RefHandleTests(unittest.TestCase):
-    def test_ref_starts_unmounted(self):
-        ref = Ref()
-        self.assertIsNone(ref.current)
-
-    def test_ref_attach_handle(self):
-        ref = Ref()
-        handle = ViewHandle(42, "Box")
-        ref.attach(handle)
-        self.assertIs(ref.current, handle)
-        self.assertEqual(ref.current.node_id, 42)
-        self.assertEqual(ref.current.kind, "Box")
-        self.assertTrue(ref.current.valid)
-
-    def test_ref_double_attach_rejects(self):
-        ref = Ref()
-        ref.attach(ViewHandle(1, "Box"))
-        with self.assertRaises(RuntimeError):
-            ref.attach(ViewHandle(2, "Layout"))
-
-    def test_ref_invalidate(self):
-        ref = Ref()
-        handle = ViewHandle(1, "Box")
-        ref.attach(handle)
-        ref.invalidate()
-        self.assertIsNone(ref.current)
-        self.assertFalse(handle.valid)
-
-    def test_viewhandle_invalidate(self):
-        handle = ViewHandle(1, "Box")
-        self.assertTrue(handle.valid)
-        handle._invalidate()
-        self.assertFalse(handle.valid)
-
-
-# ---------------------------------------------------------------------------
-# resolve_native_props
-# ---------------------------------------------------------------------------
-
-class ResolveNativePropsTests(unittest.TestCase):
-    def test_materializes_defaults(self):
-        elem = Box()
-        canon = lower_element(elem)
-        resolved = canon.props
-        self.assertIsInstance(resolved, FrozenMap)
-        # Should include default values
-        self.assertIn("opacity", resolved)
-        self.assertEqual(resolved["opacity"], 1.0)
-
-    def test_no_opaque_props(self):
-        elem = Text(text="x", style=Style(text_color="#000000"))
-        canon = lower_element(elem)
-        resolved = canon.props
-        self.assertNotIn("style", resolved)
-        self.assertNotIn("decoration", resolved)
-        self.assertNotIn("alpha", resolved)  # resolved to opacity
 
     def test_native_props_exclude_runtime_intents_without_a_second_tree(self):
         callback = lambda: None

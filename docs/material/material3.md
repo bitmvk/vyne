@@ -1,7 +1,8 @@
 # Material 3
 
-Source: `vyne/material/` (components.py, theme.py, _foundation.py,
-_callbacks.py, _geometry.py, _validation.py).
+Source: `vyne_material/` (components.py, theme.py, _foundation.py,
+_callbacks.py, _geometry.py, _validation.py). The package is distributed as
+`vyne-material` and imports as `vyne_material`; it depends on the `vyne` core.
 
 ## The approach
 
@@ -49,7 +50,7 @@ code path, no special cases.
 
 ## Composition helpers
 
-`vyne/material/_foundation.py` provides shared building blocks:
+`vyne_material/_foundation.py` provides shared building blocks:
 
 - `text()`, `slot()` — typography-aware text
 - `spacer()`, `spaced_row()`, `spaced_column()` — gap layout (gaps are
@@ -70,8 +71,8 @@ code path, no special cases.
 
 ## Catalog
 
-All 36 Material 3 Expressive families are exported from `vyne.material`
-and from the flat `vyne` API. See
+All 36 Material 3 Expressive families are exported from `vyne_material`
+(the `vyne-material` distribution). See
 [../material3-expressive.md](../material3-expressive.md) for the catalog
 table and usage guide.
 

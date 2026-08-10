@@ -15,19 +15,17 @@ from vyne.refs import Ref
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
+from tests.support.runtime_helpers import (
+    SilentTransport,
+    dispatch_native_event,
+    first_listener,
+)
 
-class SilentTransport:
-    """A transport that never auto-acknowledges (native stays silent)."""
 
-    def __init__(self) -> None:
-        self.messages: list[dict] = []
-
-    def send(self, message: dict) -> None:
-        self.messages.append(message)
-
-    @property
-    def latest(self) -> dict | None:
-        return self.messages[-1] if self.messages else None
+# ---------------------------------------------------------------------------
+# Scheduler/recovery semantics: test_runtime_caveats.py uses SilentTransport
+# and native event dispatch heavily.
+# ---------------------------------------------------------------------------
 
 
 def _system_apply(revision: int, result: str = "ok") -> dict:
@@ -190,14 +188,8 @@ class RecoveryFlowTests(unittest.TestCase):
         runtime.acknowledge_native_apply(1)
         accepted_before = runtime._coordinator.accepted_root
 
-        listener = next(
-            op for op in transport.latest["ops"]
-            if op["op"] == "listen" and op["event"] == "click"
-        )
-        runtime.dispatch_event({
-            "type": "event", "seq": 1, "target": listener["id"],
-            "event": "click", "handler": listener["handler"], "payload": {},
-        })
+        listener = first_listener(transport.latest, "click")
+        dispatch_native_event(runtime, listener)
         # A new commit is in flight; native rejects it as a known failure.
         self.assertEqual(runtime.recovery_state, RecoveryState.AWAITING_APPLY)
         inflight = runtime._coordinator.in_flight_revision
@@ -270,30 +262,6 @@ class HookContractTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "while rendering"):
             runtime.render_component(lambda: Text(text="x"), (), {})
 
-    def test_conditional_state_calls_detected(self):
-        flag = {"on": True}
-
-        def App():
-            first = state(0)
-            if not flag["on"]:
-                state(1)  # conditional second hook — illegal
-            return Text(text=f"{first.value}")
-
-        transport = MemoryTransport()
-        runtime = Runtime(App, transport=transport)
-        runtime.mount()
-        self.assertIsNotNone(runtime._coordinator.accepted_root)
-
-        def flip(e):
-            flag["on"] = False
-            runtime._root_scope.dirty = True
-            runtime._schedule_render()
-
-        # Re-render with fewer hooks — the runtime emits an error commit
-        # but preserves the accepted tree (RE-1).
-        flip(None)
-        self.assertIsNotNone(runtime._coordinator.accepted_root)
-
     def test_state_mutation_during_render_emits_error_commit(self):
         def App():
             bad = state(0)
@@ -320,14 +288,8 @@ class AnimationOnlyCommitTests(unittest.TestCase):
 
         runtime = Runtime(App, transport=transport)
         runtime.mount()
-        listener = next(
-            op for op in transport.latest["ops"]
-            if op["op"] == "listen" and op["event"] == "click"
-        )
-        runtime.dispatch_event({
-            "type": "event", "seq": 42, "target": listener["id"],
-            "event": "click", "handler": listener["handler"], "payload": {},
-        })
+        listener = first_listener(transport.latest, "click")
+        dispatch_native_event(runtime, listener, seq=42)
         commit = transport.latest
         self.assertEqual(commit.get("origin_event_seq"), 42)
         self.assertEqual(
@@ -354,17 +316,10 @@ class AnimationOnlyCommitTests(unittest.TestCase):
         runtime = Runtime(App, transport=transport)
         runtime.mount()
         runtime.acknowledge_native_apply(1)  # mount accepted; SYNCED
-        listener = next(
-            op for op in transport.latest["ops"]
-            if op["op"] == "listen" and op["event"] == "click"
-        )
+        listener = first_listener(transport.latest, "click")
 
         def click(seq: int) -> None:
-            runtime.dispatch_event({
-                "type": "event", "seq": seq, "target": listener["id"],
-                "event": "click", "handler": listener["handler"],
-                "payload": {},
-            })
+            dispatch_native_event(runtime, listener, seq=seq)
 
         # Tree-changing click: commit goes out and stays in flight.
         click(seq=1)

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.material._callbacks import normalize_selection
+from vyne_material._callbacks import normalize_selection
 
 
 class SelectionNormalizerScalarTests(unittest.TestCase):
@@ -27,22 +27,17 @@ class SelectionNormalizerScalarTests(unittest.TestCase):
         result = normalize_selection(None, ["a", "b", "c"], multi=False)
         self.assertIsNone(result)
 
-    def test_int_zero_is_valid_selection(self):
-        """0 is a valid item value, not treated as falsy-empty."""
-        result = normalize_selection(0, [0, 1, 2], multi=False)
-        self.assertEqual(result, 0)
-
-    def test_false_is_valid_selection(self):
-        result = normalize_selection(False, [True, False], multi=False)
-        self.assertEqual(result, False)
-
-    def test_true_is_valid_selection(self):
-        result = normalize_selection(True, [True, False], multi=False)
-        self.assertEqual(result, True)
-
-    def test_empty_string_valid_as_value(self):
-        result = normalize_selection("", ["", "a", "b"], multi=False)
-        self.assertEqual(result, "")
+    def test_falsy_values_are_valid_selections(self):
+        """Falsy scalars (0, False, True, "") are valid item values."""
+        cases = [
+            (0, [0, 1, 2]),
+            (False, [True, False]),
+            (True, [True, False]),
+            ("", ["", "a", "b"]),
+        ]
+        for value, items in cases:
+            with self.subTest(value=value, items=items):
+                self.assertEqual(normalize_selection(value, items, multi=False), value)
 
     def test_unknown_scalar_value_raises(self):
         with self.assertRaises(ValueError):

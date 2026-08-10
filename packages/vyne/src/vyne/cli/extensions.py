@@ -27,6 +27,7 @@ import re
 import tomllib
 from typing import Any
 
+from vyne.cli.config import validate_module
 from vyne.cli.generation import ConflictPolicy, PlanBuilder
 
 _FQN_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*\.([a-zA-Z_][a-zA-Z0-9_]*\.)*[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -34,9 +35,17 @@ REGISTRANT_RELATIVE = "ExtensionRegistrant.kt"
 
 
 def is_valid_identifier(name: str) -> bool:
-    """A valid, non-keyword Python identifier."""
-    from keyword import iskeyword
-    return name.isidentifier() and not iskeyword(name)
+    """True when *name* satisfies the shared CLI identifier policy.
+
+    Uses ``vyne.cli.config.validate_module`` so extension scaffolding and
+    discovery apply the same Python/Java/Android reserved-word policy as
+    project creation and config parsing.
+    """
+    try:
+        validate_module(name)
+    except RuntimeError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
