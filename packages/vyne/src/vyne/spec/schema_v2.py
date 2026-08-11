@@ -62,6 +62,11 @@ _dash_array = ValueSpec(dash_array=True)
 
 _pointer_axis = ValueSpec(type_name="str", enum=frozenset({"horizontal", "vertical"}))
 
+# Private virtual-list sticky edge: which viewport edge the cell sticks to.
+# Absent (None) means the cell is not sticky.
+_sticky_edge = ValueSpec(type_name="str", enum=frozenset({"start", "end"}),
+                         nullable=True)
+
 _accessibility_role = ValueSpec(type_name="str", enum=frozenset({
     "none", "button", "link", "search", "image", "keyboard_key",
     "text", "adjustable", "header", "tab", "checkbox", "radio_button",
@@ -216,7 +221,23 @@ _generic_props: list[PropSpec] = [
 # -- Widget-specific properties ----------------------------------------------
 
 _widget_props: dict[str, list[PropSpec]] = {
-    "Box": [],
+    "Box": [
+        # Private virtual-list markers, consumed only by the native host.
+        # Underscore-prefixed props are excluded from generated public
+        # constructor stubs.  The generic VirtualList marks its content Box
+        # and carries sticky boundary/edge metadata on sticky cell wrappers;
+        # the native scroll hosts apply the sticky movement per frame.
+        PropSpec("_virtual_content", _bool, default=False,
+                 wire_name="_virtualListContent", drop_default=True),
+        PropSpec("_virtual_sticky_edge", _sticky_edge, default=None,
+                 wire_name="_virtualStickyEdge", drop_default=True),
+        PropSpec("_virtual_sticky_boundary_start", _non_negative_number,
+                 default=0, wire_name="_virtualStickyBoundaryStart",
+                 drop_default=True),
+        PropSpec("_virtual_sticky_boundary_end", _non_negative_number,
+                 default=0, wire_name="_virtualStickyBoundaryEnd",
+                 drop_default=True),
+    ],
     "Layout": [
         PropSpec("orientation", _orientation, default="vertical",
                  applies_to=frozenset({"Layout"}),

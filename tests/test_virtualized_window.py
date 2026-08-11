@@ -11,7 +11,7 @@ from vyne._lists import (
     SpacerSegment,
     ViewportMetrics,
     WindowConfig,
-    plan_window,
+    plan_mask,
     select_window,
 )
 
@@ -89,87 +89,74 @@ class FixedExtentLayoutTests(unittest.TestCase):
             FixedExtentLayout(1, math.inf)
 
 
+def _plan(
+    layout: FixedExtentLayout,
+    viewport: ViewportMetrics,
+    config: WindowConfig,
+    **kwargs,
+):
+    """Compose select_window + plan_mask (the public planner composition)."""
+    return plan_mask(layout, select_window(layout, viewport, config, **kwargs).mask)
+
+
 class WindowPlannerTests(unittest.TestCase):
-    def test_visible_window_and_overscan_are_planned(self) -> None:
-        plan = plan_window(
+    def test_visible_window_and_symmetric_overscan_are_planned(self) -> None:
+        plan = _plan(
             FixedExtentLayout(item_count=100, item_extent=10),
             ViewportMetrics(offset=400, extent=100),
-            WindowConfig(
-                overscan_before_viewports=1,
-                overscan_after_viewports=2,
-                prediction_horizon_seconds=0,
-                max_prediction_viewports=0,
-                reversal_retention_viewports=0,
-            ),
+            WindowConfig(overscan_viewports=1),
         )
 
-        self.assertEqual(plan.mask, RenderMask.from_ranges(IndexRange(30, 70)))
+        self.assertEqual(plan.mask, RenderMask.from_ranges(IndexRange(30, 60)))
         self.assertEqual(
             plan.segments,
             (
                 SpacerSegment(0, 30, 300),
-                ItemRangeSegment(30, 70),
-                SpacerSegment(70, 100, 300),
+                ItemRangeSegment(30, 60),
+                SpacerSegment(60, 100, 400),
             ),
         )
         self.assertEqual(plan.total_extent, 1000)
 
-    def test_velocity_prediction_expands_only_the_leading_side(self) -> None:
+    def test_asymmetric_overscan_is_no_longer_a_concept(self) -> None:
+        # The public API always used one symmetric overscan value; the
+        # before/after split was removed in M4.
         layout = FixedExtentLayout(item_count=100, item_extent=10)
-        config = WindowConfig(1, 1, 0.2, 3, 2)
-
-        forward = select_window(
+        config = WindowConfig(overscan_viewports=2)
+        selection = select_window(
             layout,
-            ViewportMetrics(offset=400, extent=100, velocity=1000),
+            ViewportMetrics(offset=400, extent=100),
             config,
         )
-        reverse = select_window(
-            layout,
-            ViewportMetrics(offset=400, extent=100, velocity=-1000),
-            config,
-        )
-
-        self.assertEqual(forward.coverage, IndexRange(30, 80))
-        self.assertEqual(forward.direction, 1)
-        self.assertEqual(reverse.coverage, IndexRange(10, 60))
-        self.assertEqual(reverse.direction, -1)
-
-    def test_prediction_distance_is_capped_in_viewports(self) -> None:
-        selection = select_window(
-            FixedExtentLayout(item_count=1000, item_extent=10),
-            ViewportMetrics(offset=4000, extent=100, velocity=1_000_000),
-            WindowConfig(1, 1, 1, 2, 0),
-        )
-
-        self.assertEqual(selection.coverage, IndexRange(390, 440))
-
-    def test_direction_reversal_retains_bounded_accepted_coverage(self) -> None:
-        selection = select_window(
-            FixedExtentLayout(item_count=100, item_extent=10),
-            ViewportMetrics(offset=400, extent=100, velocity=-100),
-            WindowConfig(0, 0, 0, 0, 2),
-            previous_coverage=IndexRange(30, 50),
-            previous_direction=1,
-        )
-
-        self.assertEqual(selection.coverage, IndexRange(30, 50))
-        self.assertEqual(selection.mask, RenderMask.from_ranges(IndexRange(30, 50)))
+        self.assertEqual(selection.mask, RenderMask.from_ranges(IndexRange(20, 70)))
 
     def test_required_actual_viewport_survives_blocked_coverage_handoff(self) -> None:
         selection = select_window(
             FixedExtentLayout(item_count=100, item_extent=10),
-            ViewportMetrics(offset=490, extent=100, velocity=-100),
-            WindowConfig(0, 0, 0, 0, 0),
+            ViewportMetrics(offset=490, extent=100),
+            WindowConfig(overscan_viewports=0),
             required_viewport=ViewportMetrics(offset=500, extent=100),
         )
 
-        self.assertEqual(selection.coverage, IndexRange(49, 60))
+        self.assertEqual(selection.mask, RenderMask.from_ranges(IndexRange(49, 60)))
+
+    def test_required_viewport_extends_the_planning_path(self) -> None:
+        # The planning target lies ahead of the actual viewport; the window
+        # must cover the whole path in one contiguous span.
+        selection = select_window(
+            FixedExtentLayout(item_count=100, item_extent=10),
+            ViewportMetrics(offset=900, extent=100),
+            WindowConfig(overscan_viewports=1),
+            required_viewport=ViewportMetrics(offset=0, extent=100),
+        )
+
+        self.assertEqual(selection.mask, RenderMask.from_ranges(IndexRange(0, 100)))
 
     def test_retained_regions_create_discontiguous_mask_and_spacers(self) -> None:
-        plan = plan_window(
+        plan = _plan(
             FixedExtentLayout(item_count=100, item_extent=10),
             ViewportMetrics(offset=400, extent=100),
-            WindowConfig(0, 0, 0, 0, 0),
+            WindowConfig(overscan_viewports=0),
             retained=RenderMask.from_ranges(
                 IndexRange(0, 2),
                 IndexRange(90, 91),
@@ -193,28 +180,28 @@ class WindowPlannerTests(unittest.TestCase):
         )
 
     def test_window_at_content_end_is_clamped(self) -> None:
-        plan = plan_window(
+        plan = _plan(
             FixedExtentLayout(item_count=100, item_extent=10),
             ViewportMetrics(offset=950, extent=100),
-            WindowConfig(1, 1, 0, 0, 0),
+            WindowConfig(overscan_viewports=1),
         )
 
         self.assertEqual(plan.mask, RenderMask.from_ranges(IndexRange(80, 100)))
 
     def test_overscroll_beyond_content_uses_last_legal_viewport(self) -> None:
-        plan = plan_window(
+        plan = _plan(
             FixedExtentLayout(item_count=100, item_extent=10),
             ViewportMetrics(offset=5000, extent=100),
-            WindowConfig(0, 0, 0, 0, 0),
+            WindowConfig(overscan_viewports=0),
         )
 
         self.assertEqual(plan.mask, RenderMask.from_ranges(IndexRange(90, 100)))
 
     def test_empty_layout_has_no_segments(self) -> None:
-        plan = plan_window(
+        plan = _plan(
             FixedExtentLayout(item_count=0, item_extent=10),
             ViewportMetrics(offset=0, extent=100),
-            WindowConfig(1, 1, 0, 0, 0),
+            WindowConfig(overscan_viewports=1),
         )
 
         self.assertTrue(plan.mask.empty)
@@ -222,14 +209,30 @@ class WindowPlannerTests(unittest.TestCase):
         self.assertEqual(plan.total_extent, 0)
 
     def test_no_viewport_extent_renders_only_retained_policy(self) -> None:
-        plan = plan_window(
+        plan = _plan(
             FixedExtentLayout(item_count=10, item_extent=10),
             ViewportMetrics(offset=0, extent=0),
-            WindowConfig(1, 1, 0, 0, 0),
+            WindowConfig(overscan_viewports=1),
             retained=RenderMask.from_ranges(IndexRange(0, 3)),
         )
 
         self.assertEqual(plan.mask, RenderMask.from_ranges(IndexRange(0, 3)))
+
+    def test_window_config_validates_fields(self) -> None:
+        with self.assertRaisesRegex(ValueError, "overscan_viewports"):
+            WindowConfig(overscan_viewports=-1)
+        with self.assertRaisesRegex(ValueError, "max_render_ahead_viewports"):
+            WindowConfig(overscan_viewports=1, max_render_ahead_viewports=float("nan"))
+        with self.assertRaisesRegex(TypeError, "overscan_viewports"):
+            WindowConfig(overscan_viewports=True)
+
+    def test_viewport_metrics_has_no_velocity_field(self) -> None:
+        # Velocity prediction was removed in M4; the payload velocity is no
+        # longer part of the planner model.
+        viewport = ViewportMetrics(offset=10, extent=100)
+        self.assertFalse(hasattr(viewport, "velocity"))
+        with self.assertRaisesRegex(TypeError, "unexpected keyword"):
+            ViewportMetrics(offset=10, extent=100, velocity=5)
 
 
 if __name__ == "__main__":

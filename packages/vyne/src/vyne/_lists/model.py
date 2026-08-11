@@ -118,7 +118,6 @@ class ViewportMetrics:
 
     offset: float
     extent: float
-    velocity: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -131,64 +130,27 @@ class ViewportMetrics:
             "extent",
             _finite_non_negative(self.extent, name="viewport extent"),
         )
-        if isinstance(self.velocity, bool) or not isinstance(self.velocity, int | float):
-            raise TypeError("viewport velocity must be a finite number")
-        velocity = float(self.velocity)
-        if not math.isfinite(velocity):
-            raise ValueError("viewport velocity must be a finite number")
-        object.__setattr__(self, "velocity", velocity)
 
 
 @dataclass(frozen=True)
 class WindowConfig:
-    """Explicit bounded-window policy. Public defaults are intentionally absent."""
+    """Explicit bounded-window policy. Public defaults are intentionally absent.
 
-    overscan_before_viewports: float
-    overscan_after_viewports: float
-    prediction_horizon_seconds: float
-    max_prediction_viewports: float
-    reversal_retention_viewports: float
+    The projection cap lives here so the private fixed engine and the public
+    ``List`` share one policy value; velocity prediction and reversal
+    retention were removed because the public API always set them to zero.
+    """
+
+    overscan_viewports: float
     max_render_ahead_viewports: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "overscan_before_viewports",
+            "overscan_viewports",
             _finite_non_negative(
-                self.overscan_before_viewports,
-                name="overscan_before_viewports",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "overscan_after_viewports",
-            _finite_non_negative(
-                self.overscan_after_viewports,
-                name="overscan_after_viewports",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "prediction_horizon_seconds",
-            _finite_non_negative(
-                self.prediction_horizon_seconds,
-                name="prediction_horizon_seconds",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "max_prediction_viewports",
-            _finite_non_negative(
-                self.max_prediction_viewports,
-                name="max_prediction_viewports",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "reversal_retention_viewports",
-            _finite_non_negative(
-                self.reversal_retention_viewports,
-                name="reversal_retention_viewports",
+                self.overscan_viewports,
+                name="overscan_viewports",
             ),
         )
         object.__setattr__(
@@ -203,19 +165,13 @@ class WindowConfig:
 
 @dataclass(frozen=True)
 class WindowSelection:
-    """One contiguous native coverage range plus the full Python render mask."""
+    """The full Python render mask chosen for one viewport observation."""
 
     mask: RenderMask
-    coverage: IndexRange
-    direction: Literal[-1, 0, 1]
 
     def __post_init__(self) -> None:
         if not isinstance(self.mask, RenderMask):
             raise TypeError("WindowSelection mask must be RenderMask")
-        if not isinstance(self.coverage, IndexRange):
-            raise TypeError("WindowSelection coverage must be IndexRange")
-        if self.direction not in {-1, 0, 1}:
-            raise ValueError("WindowSelection direction must be -1, 0, or 1")
 
 
 @runtime_checkable

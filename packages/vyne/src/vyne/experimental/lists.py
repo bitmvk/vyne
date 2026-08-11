@@ -1,15 +1,14 @@
 """Deprecated alias for the public list surface.
 
-``VirtualList`` and ``VirtualListController`` were the temporary experimental
-names. The final API is :class:`vyne.List` and :class:`vyne.ListController`;
-this module keeps the old imports working without changes.
+``VirtualList`` and ``ListController`` were introduced through this module
+while the list API stabilized. The final API is :class:`vyne.List`,
+:class:`vyne.VirtualList`, and the single :class:`vyne.ListController`; this
+module keeps old imports of those names working. The temporary
+``VirtualListController`` name is gone: there is one controller type.
 """
 
 from __future__ import annotations
 
-from vyne.lists import List, ListController
+from vyne.lists import ListController, VirtualList
 
-VirtualList = List
-VirtualListController = ListController
-
-__all__ = ["VirtualList", "VirtualListController"]
+__all__ = ["VirtualList", "ListController"]

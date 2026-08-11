@@ -8,7 +8,7 @@ and reconciles the resulting ordinary Element tree.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from typing import Any, Literal
 
@@ -37,8 +37,14 @@ from vyne._lists.model import (
     WindowConfig,
     WindowSelection,
 )
-from vyne._lists.source import VirtualizedDataSource
+from vyne._lists._shared import (
+    derive_candidate_key_registry,
+    resolve_alignment_offset,
+    resolve_key_index,
+)
+from vyne._lists.source import KeyRegistry, VirtualizedDataSource
 from vyne._lists.window import plan_mask, select_window
+from vyne.values import validate_canonical_key
 
 
 @dataclass(frozen=True)
@@ -46,30 +52,58 @@ class _FixedWindowState:
     axis: Literal["vertical", "horizontal"]
     viewport: ViewportMetrics | None
     actual_viewport: ViewportMetrics | None
-    accepted_coverage: IndexRange | None
-    accepted_direction: Literal[-1, 0, 1]
+    item_count: int | None
 
 
 @dataclass(frozen=True)
 class _FixedVirtualListBinding:
+    """Accepted controller binding for one mounted fixed-list target.
+
+    Candidate data (key registry) lives here and is promoted through
+    ``_accept_runtime_binding`` only after the native acknowledgement, so
+    rejected or unknown commits never leak candidate key mappings into
+    accepted controller state.  ``source`` is retained so controller
+    commands can resolve keys without re-adapting the data.
+
+    ``actual_viewport`` and ``planning_viewport`` are the immutable
+    viewport snapshots of the render this binding commits.  Controller
+    commands read them instead of the journaled ``window_state``, which can
+    hold candidate viewports from an un-acknowledged commit: a command
+    issued while a commit is in flight, or after a known rejection, must
+    act on the last accepted actual viewport, never on a destination that
+    was not accepted.
+    """
+
     window_state: State[_FixedWindowState]
+    source: VirtualizedDataSource
     layout: FixedExtentLayout
     retained_mask: RenderMask
     window_config: WindowConfig
     axis: Literal["vertical", "horizontal"]
-    coverage: IndexRange
-    direction: Literal[-1, 0, 1]
     estimated_viewport_extent: float | None
+    key_registry: KeyRegistry | None = None
+    actual_viewport: ViewportMetrics | None = None
+    planning_viewport: ViewportMetrics | None = None
 
 
 class FixedVirtualListController:
-    """Private accepted owner for one mounted fixed-list target."""
+    """Private accepted owner for one mounted fixed-list target.
+
+    Owned by the public ``ListController`` facade; never part of the public
+    API.
+    """
 
     def __init__(self) -> None:
         self._scroll_ref = Ref()
         self._binding: _FixedVirtualListBinding | None = None
         self._viewport_offset: float | None = None
         self._viewport_extent: float | None = None
+        self._key_registry: KeyRegistry | None = None
+
+    @property
+    def is_mounted(self) -> bool:
+        """True when an accepted binding is currently attached."""
+        return self._binding is not None
 
     def _accept_runtime_binding(
         self,
@@ -87,8 +121,33 @@ class FixedVirtualListController:
             or previous.window_state is not binding.window_state
             or previous.axis != binding.axis
         ):
+            # Unmount, a different occurrence, a fresh render state, or a
+            # flipped axis invalidates the observed physical viewport;
+            # commands must wait for fresh native metrics instead of acting
+            # on a stale window.
             self._viewport_offset = None
             self._viewport_extent = None
+        if binding is None:
+            self._key_registry = None
+        else:
+            self._key_registry = binding.key_registry
+            # Promote the accepted actual viewport into the observed
+            # physical cache only when it changed from the previously
+            # accepted binding (a programmatic non-animated ack, an anchor
+            # correction, or a native replan) or on a first/new-occurrence
+            # binding.  Programmatic jumps therefore only land in the cache
+            # once the native side acknowledged the commit, while an
+            # unrelated render that keeps the same accepted actual snapshot
+            # must not overwrite a newer no-commit native observation with
+            # stale state.
+            if binding.actual_viewport is not None and (
+                previous is None
+                or previous.window_state is not binding.window_state
+                or previous.axis != binding.axis
+                or previous.actual_viewport != binding.actual_viewport
+            ):
+                self._viewport_offset = binding.actual_viewport.offset
+                self._viewport_extent = binding.actual_viewport.extent
         self._binding = binding
 
     def _observe_viewport(self, viewport: ViewportMetrics) -> None:
@@ -114,54 +173,62 @@ class FixedVirtualListController:
                 f"index {index} outside item range 0..{binding.layout.item_count - 1}"
             )
         if alignment not in {"start", "center", "end", "nearest"}:
-            raise ValueError(
-                "alignment must be 'start', 'center', 'end', or 'nearest'"
-            )
+            raise ValueError("alignment must be 'start', 'center', 'end', or 'nearest'")
         if type(animated) is not bool:
             raise TypeError("animated must be a boolean")
 
         item_start = binding.layout.offset_for_index(index)
         item_end = binding.layout.offset_for_index(index + 1)
-        if alignment == "start":
-            target_offset = item_start
-        else:
-            viewport_extent = self._viewport_extent
-            if viewport_extent is None or viewport_extent <= 0:
-                raise RuntimeError(
-                    f"{alignment} alignment requires viewport metrics"
-                )
-            if alignment == "center":
-                target_offset = (item_start + item_end - viewport_extent) / 2
-            elif alignment == "end":
-                target_offset = item_end - viewport_extent
-            else:
-                viewport_offset = self._viewport_offset
-                if viewport_offset is None:
-                    raise RuntimeError(
-                        "nearest alignment requires viewport metrics"
-                    )
-                viewport_end = viewport_offset + viewport_extent
-                if item_start >= viewport_offset and item_end <= viewport_end:
-                    return
-                max_offset = max(
-                    0.0,
-                    binding.layout.total_extent - viewport_extent,
-                )
-                start_target = min(item_start, max_offset)
-                end_target = min(
-                    max(0.0, item_end - viewport_extent),
-                    max_offset,
-                )
-                target_offset = (
-                    start_target
-                    if abs(start_target - viewport_offset)
-                    <= abs(end_target - viewport_offset)
-                    else end_target
-                )
-                if target_offset == viewport_offset:
-                    return
+        actual = _preferred_actual(self, binding)
+        viewport_extent = actual.extent if actual is not None else None
+        viewport_offset = actual.offset if actual is not None else None
+        if alignment != "start" and (viewport_extent is None or viewport_extent <= 0):
+            raise RuntimeError(f"{alignment} alignment requires viewport metrics")
+        if alignment == "nearest" and viewport_offset is None:
+            raise RuntimeError("nearest alignment requires viewport metrics")
+        target_offset = resolve_alignment_offset(
+            alignment=alignment,
+            main_start=item_start,
+            main_end=item_end,
+            viewport_offset=viewport_offset or 0.0,
+            viewport_extent=viewport_extent or 0.0,
+            max_offset=max(0.0, binding.layout.total_extent - (viewport_extent or 0.0)),
+        )
+        if target_offset is None:
+            return
 
-        self.scroll_to_offset(max(0.0, target_offset), animated=animated)
+        self.scroll_to_offset(target_offset, animated=animated)
+
+    def scroll_to_key(
+        self,
+        key: Any,
+        *,
+        alignment: Literal["start", "center", "end", "nearest"],
+        animated: bool,
+    ) -> None:
+        """Scroll a stable source key into the viewport.
+
+        Resolution never scans the source: the accepted per-occurrence key
+        registry answers for already-realized keys, a plain ``Sequence``
+        with default index keys answers in O(1), and an optional source
+        ``index_for_key`` answers for the rest.  Any other key raises
+        without a full-source scan.
+        """
+        binding = self._binding
+        if binding is None or self._scroll_ref.current is None:
+            raise RuntimeError("Fixed virtual list is not mounted")
+        validate_canonical_key(key, path="list key")
+        index = resolve_key_index(
+            key=key,
+            source=binding.source,
+            key_registry=binding.key_registry,
+        )
+        if index is None:
+            raise RuntimeError(
+                f"key {key!r} is not realized and the source cannot resolve "
+                "it; no full-source scan is performed"
+            )
+        self.scroll_to_index(index, alignment=alignment, animated=animated)
 
     def scroll_to_offset(self, offset: float, *, animated: bool) -> None:
         """Realize an explicit target window and queue one native scroll."""
@@ -169,12 +236,9 @@ class FixedVirtualListController:
         handle = self._scroll_ref.current
         if binding is None or handle is None:
             raise RuntimeError("Fixed virtual list is not mounted")
-        viewport_extent = (
-            self._viewport_extent
-            or binding.estimated_viewport_extent
-            or 0.0
-        )
-        if viewport_extent <= 0:
+        actual = _preferred_actual(self, binding)
+        viewport_extent = actual.extent if actual is not None else None
+        if viewport_extent is None or viewport_extent <= 0:
             raise RuntimeError(
                 "scroll_to_offset requires native viewport metrics or an explicit "
                 "numeric main-axis list size"
@@ -185,8 +249,7 @@ class FixedVirtualListController:
             viewport,
             binding.window_config,
             binding.retained_mask,
-            previous_coverage=binding.coverage,
-            previous_direction=binding.direction,
+            required_viewport=actual,
         )
 
         runtime = current_runtime()
@@ -203,7 +266,7 @@ class FixedVirtualListController:
             )
         )
         actual_offset = min(
-            self._viewport_offset or 0.0,
+            (actual.offset if actual is not None else 0.0),
             max(0.0, binding.layout.total_extent - viewport.extent),
         )
         planning_viewport = ViewportMetrics(
@@ -222,8 +285,7 @@ class FixedVirtualListController:
             axis=binding.axis,
             viewport=planning_viewport,
             actual_viewport=actual_viewport,
-            accepted_coverage=binding.coverage,
-            accepted_direction=binding.direction,
+            item_count=binding.layout.item_count,
         )
         if next_state != binding.window_state.value:
             binding.window_state.set(next_state)
@@ -242,6 +304,8 @@ class FixedVirtualListSpec:
     retained_mask: RenderMask
     window_config: WindowConfig
     scroll_props: FrozenMap = FrozenMap()
+    key_registry: KeyRegistry | None = None
+    key_for_item: Callable[[Any, int], Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, VirtualizedDataSource):
@@ -250,6 +314,13 @@ class FixedVirtualListSpec:
             raise TypeError("controller must be FixedVirtualListController")
         if not callable(self.render_item):
             raise TypeError("render_item must be callable")
+        if self.key_registry is not None and not isinstance(
+            self.key_registry,
+            KeyRegistry,
+        ):
+            raise TypeError("key_registry must be KeyRegistry or None")
+        if self.key_for_item is not None and not callable(self.key_for_item):
+            raise TypeError("key_for_item must be callable or None")
         # Reuse the layout value object's strict count/extent validation.
         FixedExtentLayout(self.source.item_count, self.item_extent)
         if self.axis not in {"vertical", "horizontal"}:
@@ -273,71 +344,62 @@ class FixedVirtualListSpec:
         object.__setattr__(
             self,
             "scroll_props",
-            FrozenMap((name, freeze(value)) for name, value in self.scroll_props.items()),
+            FrozenMap(
+                (name, freeze(value)) for name, value in self.scroll_props.items()
+            ),
         )
 
 
 @component
 def render_fixed_virtual_list(spec: FixedVirtualListSpec) -> Element:
     """Render one private list component using ordinary Vyne primitives."""
-    layout = FixedExtentLayout(spec.source.item_count, spec.item_extent)
-    constrained_initial = spec.initial_mask.constrained(layout.item_count)
-    initial_coverage = (
-        constrained_initial.ranges[0]
-        if constrained_initial.ranges
-        else IndexRange(0, 0)
+    candidate_registry = derive_candidate_key_registry(
+        spec.controller._key_registry,
+        spec.key_registry,
+        spec.source,
+        spec.key_for_item,
     )
+    render_spec = replace(spec, key_registry=candidate_registry)
+    layout = FixedExtentLayout(render_spec.source.item_count, render_spec.item_extent)
+    constrained_initial = render_spec.initial_mask.constrained(layout.item_count)
     initial_mask = constrained_initial.union(
-        spec.retained_mask.constrained(layout.item_count)
+        render_spec.retained_mask.constrained(layout.item_count)
     )
-    estimated_viewport_extent = _declared_viewport_extent(spec)
+    estimated_viewport_extent = _declared_viewport_extent(render_spec)
     window_state = state(
         _FixedWindowState(
-            axis=spec.axis,
+            axis=render_spec.axis,
             viewport=None,
             actual_viewport=None,
-            accepted_coverage=None,
-            accepted_direction=0,
+            item_count=None,
         )
     )
     observed = window_state.value
     desired_offset = 0.0
-    if observed.axis != spec.axis or observed.viewport is None:
+    if observed.axis != render_spec.axis or observed.viewport is None:
+        actual_viewport = None
+        planning_viewport = None
         if estimated_viewport_extent is None:
-            selection = WindowSelection(
-                mask=initial_mask,
-                coverage=initial_coverage,
-                direction=0,
-            )
+            selection = WindowSelection(mask=initial_mask)
         else:
+            metrics = ViewportMetrics(0, estimated_viewport_extent)
+            actual_viewport = metrics
+            planning_viewport = metrics
             selection = select_window(
                 layout,
-                ViewportMetrics(0, estimated_viewport_extent),
-                spec.window_config,
+                metrics,
+                render_spec.window_config,
                 retained=initial_mask,
-                required_viewport=ViewportMetrics(0, estimated_viewport_extent),
+                required_viewport=metrics,
             )
-            if (
-                not initial_coverage.empty
-                and initial_coverage.start <= selection.coverage.stop
-                and selection.coverage.start <= initial_coverage.stop
-            ):
-                selection = WindowSelection(
-                    mask=selection.mask,
-                    coverage=IndexRange(
-                        min(selection.coverage.start, initial_coverage.start),
-                        max(selection.coverage.stop, initial_coverage.stop),
-                    ),
-                    direction=selection.direction,
-                )
     else:
+        actual_viewport = observed.actual_viewport
+        planning_viewport = observed.viewport
         desired_offset, selection = _selection_for_offset(
             layout,
             observed.viewport,
-            spec.window_config,
-            spec.retained_mask,
-            previous_coverage=observed.accepted_coverage,
-            previous_direction=observed.accepted_direction,
+            render_spec.window_config,
+            render_spec.retained_mask,
             required_viewport=observed.actual_viewport,
         )
     current_mask = selection.mask
@@ -345,52 +407,59 @@ def render_fixed_virtual_list(spec: FixedVirtualListSpec) -> Element:
     if runtime is None:
         raise RuntimeError("Fixed virtual list must render inside a Runtime")
     runtime._stage_imperative_binding(
-        spec.controller,
+        render_spec.controller,
         _FixedVirtualListBinding(
             window_state=window_state,
+            source=render_spec.source,
             layout=layout,
-            retained_mask=spec.retained_mask,
-            window_config=spec.window_config,
-            axis=spec.axis,
-            coverage=selection.coverage,
-            direction=selection.direction,
+            retained_mask=render_spec.retained_mask,
+            window_config=render_spec.window_config,
+            axis=render_spec.axis,
             estimated_viewport_extent=estimated_viewport_extent,
+            key_registry=candidate_registry,
+            actual_viewport=actual_viewport,
+            planning_viewport=planning_viewport,
         ),
-        anchor_ref=spec.controller._scroll_ref,
+        anchor_ref=render_spec.controller._scroll_ref,
     )
 
     def observe_scroll(event: Any) -> None:
-        actual_viewport = _axis_viewport(event, spec.axis)
-        projected_viewport = _projected_axis_viewport(event, spec.axis)
+        actual_viewport = _axis_viewport(event, render_spec.axis)
+        projected_viewport = _projected_axis_viewport(event, render_spec.axis)
         planning_viewport = (
             _capped_planning_viewport(
                 projected_viewport,
                 actual_viewport,
-                spec.window_config,
+                render_spec.window_config,
             )
             if projected_viewport is not None
             else actual_viewport
         )
-        spec.controller._observe_viewport(actual_viewport)
+        render_spec.controller._observe_viewport(actual_viewport)
+        # Recompute the layout from the live source count: an in-place
+        # shrink leaves the last-render layout stale, and the accepted mask
+        # may still contain cells that no longer exist.
+        current_layout = FixedExtentLayout(
+            render_spec.source.item_count, render_spec.item_extent
+        )
         if _mask_contains_viewports(
             selection.mask,
-            layout,
+            current_layout,
             planning_viewport,
             actual_viewport,
         ):
             return
         next_state = _FixedWindowState(
-            axis=spec.axis,
+            axis=render_spec.axis,
             viewport=planning_viewport,
             actual_viewport=actual_viewport,
-            accepted_coverage=selection.coverage,
-            accepted_direction=selection.direction,
+            item_count=render_spec.source.item_count,
         )
         if next_state != window_state.value:
             window_state.set(next_state)
 
     return compose_fixed_window(
-        spec,
+        render_spec,
         current_mask,
         initial_offset=desired_offset,
         on_scroll_metrics=latest(observe_scroll),
@@ -409,6 +478,11 @@ def compose_fixed_window(
     plan = plan_mask(layout, mask)
     children: list[Element] = []
     spacer_ordinal = 0
+    seen_keys: set[Any] = set()
+    registry = spec.key_registry
+    use_registry = registry is not None and not getattr(
+        spec.source, "uses_index_keys", False
+    )
 
     for segment in plan.segments:
         if isinstance(segment, SpacerSegment):
@@ -429,6 +503,18 @@ def compose_fixed_window(
             raise TypeError(f"Unknown list segment {type(segment).__name__}")
         for index in range(segment.start, segment.stop):
             key = spec.source.key_at(index)
+            if key in seen_keys:
+                raise ValueError(f"Duplicate list key {key!r} at index {index}")
+            seen_keys.add(key)
+            if use_registry:
+                assert registry is not None
+                previous_index = registry.key_to_index.get(key)
+                if previous_index is not None and previous_index != index:
+                    raise ValueError(
+                        f"Duplicate list key {key!r} at index {index} "
+                        f"(already realized at index {previous_index})"
+                    )
+                registry.key_to_index[key] = index
             rendered = normalize_child(
                 spec.render_item(spec.source.item_at(index), index, key)
             )
@@ -483,19 +569,66 @@ def _declared_viewport_extent(spec: FixedVirtualListSpec) -> float | None:
     return extent if math.isfinite(extent) and extent > 0 else None
 
 
+def _preferred_actual(
+    controller: FixedVirtualListController,
+    binding: _FixedVirtualListBinding,
+) -> ViewportMetrics | None:
+    """Preferred current physical actual viewport for one controller command.
+
+    Real native scroll events are recorded in the controller's observation
+    cache before any no-op coverage return, so the cache stays current even
+    when the scroll stays inside accepted coverage and produces no render
+    or acknowledgement (the promoted binding snapshot is stale).  Commands
+    prefer that observation and fall back to the promoted binding snapshot
+    (or the declared pre-metrics viewport) before the first native event.
+    The snapshot is never read from the journaled candidate
+    ``window_state``: a command issued while a commit is in flight — or
+    after a known rejection — must act on the last accepted position, not
+    on an un-acknowledged destination.
+    """
+    if (
+        controller._viewport_offset is not None
+        and controller._viewport_extent is not None
+    ):
+        return ViewportMetrics(
+            controller._viewport_offset,
+            controller._viewport_extent,
+        )
+    actual, _planning = _binding_viewports(binding)
+    return actual
+
+
+def _binding_viewports(
+    binding: _FixedVirtualListBinding,
+) -> tuple[ViewportMetrics | None, ViewportMetrics | None]:
+    """Accepted viewports carried by the promoted binding.
+
+    The snapshots are immutable and promoted together with the binding only
+    on the native acknowledgement, so controller commands never observe
+    candidate viewports from an in-flight or rejected commit.  Falls back
+    to the declared pre-metrics viewport when the binding carries none.
+    """
+    if (
+        binding.actual_viewport is not None
+        and binding.planning_viewport is not None
+    ):
+        return binding.actual_viewport, binding.planning_viewport
+    extent = binding.estimated_viewport_extent
+    if extent is None or extent <= 0:
+        return None, None
+    metrics = ViewportMetrics(0.0, extent)
+    return metrics, metrics
+
+
 def _selection_for_offset(
     layout: FixedExtentLayout,
     viewport: ViewportMetrics,
     config: WindowConfig,
     retained: RenderMask,
     *,
-    previous_coverage: IndexRange | None,
-    previous_direction: int,
     required_viewport: ViewportMetrics | None = None,
 ) -> tuple[float, WindowSelection]:
-    target_extent = (
-        viewport.extent if viewport.extent > 0 else layout.item_extent
-    )
+    target_extent = viewport.extent if viewport.extent > 0 else layout.item_extent
     bounded_offset = min(
         viewport.offset,
         max(0.0, layout.total_extent - target_extent),
@@ -506,12 +639,9 @@ def _selection_for_offset(
             ViewportMetrics(
                 bounded_offset,
                 viewport.extent,
-                viewport.velocity,
             ),
             config,
             retained=retained,
-            previous_coverage=previous_coverage,
-            previous_direction=previous_direction,
             required_viewport=required_viewport,
         )
     else:
@@ -519,15 +649,10 @@ def _selection_for_offset(
             bounded_offset,
             min(layout.total_extent, bounded_offset + layout.item_extent),
         )
-        direction = (
-            1 if viewport.velocity > 0 else -1 if viewport.velocity < 0 else 0
-        )
         selection = WindowSelection(
             mask=RenderMask.from_ranges(target).union(
                 retained.constrained(layout.item_count)
             ),
-            coverage=target,
-            direction=direction,
         )
     return bounded_offset, selection
 
@@ -544,7 +669,6 @@ def _axis_viewport(
     return ViewportMetrics(
         offset=getter(f"offset_{suffix}"),
         extent=getter(extent_name),
-        velocity=getter(f"velocity_{suffix}", 0.0),
     )
 
 
@@ -577,16 +701,17 @@ def _capped_planning_viewport(
     ``max_render_ahead_viewports`` caps how far ahead of the current viewport
     the planned window may reach; the window then follows the scroll in
     bounded steps instead of rendering the full fling path in one commit.
-    A cap of 0 leaves the projection unbounded.
+    The cap is symmetric: a backward fling may reach at most ``cap``
+    viewports behind the actual viewport, and a forward fling at most ``cap``
+    viewports ahead. A cap of 0 leaves the projection unbounded.
     """
     cap = config.max_render_ahead_viewports
     if cap <= 0 or actual.extent <= 0:
         return projected
-    ahead = min(
-        projected.offset,
-        actual.offset + actual.extent * cap,
-    )
-    return ViewportMetrics(offset=ahead, extent=actual.extent)
+    low = max(0.0, actual.offset - actual.extent * cap)
+    high = actual.offset + actual.extent * cap
+    bounded = min(max(projected.offset, low), high)
+    return ViewportMetrics(offset=bounded, extent=actual.extent)
 
 
 def _mask_contains_viewports(
@@ -599,17 +724,27 @@ def _mask_contains_viewports(
     The planner is deterministic for identical inputs, so when both the
     planning target and the current viewport are already mounted, a render
     would change nothing and can be skipped.
+
+    A mask that still contains cells at or beyond the current item count is
+    stale: the source shrank and the mounted window no longer matches the
+    layout, so a replan must run to drop the removed cells.  Each viewport
+    offset is clamped to the current scroll bounds before its item span is
+    checked, mirroring the planner, so an out-of-range offset tests the real
+    (clamped) end window instead of vacuously passing on an empty span.
     """
+    if mask.constrained(layout.item_count) != mask:
+        return False
     for viewport in viewports:
         if viewport.extent <= 0:
             continue
+        max_offset = max(0.0, layout.total_extent - viewport.extent)
+        bounded_offset = min(viewport.offset, max_offset)
         item_range = layout.range_for_interval(
-            viewport.offset,
-            viewport.offset + viewport.extent,
+            bounded_offset,
+            bounded_offset + viewport.extent,
         )
         if not all(
-            mask.contains(index)
-            for index in range(item_range.start, item_range.stop)
+            mask.contains(index) for index in range(item_range.start, item_range.stop)
         ):
             return False
     return True

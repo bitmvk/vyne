@@ -11,6 +11,12 @@ from vyne._lists.fixed import (
     compose_fixed_window,
     render_fixed_virtual_list,
 )
+from vyne._lists.generic import (
+    GenericVirtualListController,
+    VirtualListSpec,
+    compose_generic_window,
+    render_generic_virtual_list,
+)
 from vyne._lists.model import (
     FixedExtentLayout,
     IndexRange,
@@ -22,26 +28,34 @@ from vyne._lists.model import (
     WindowPlan,
     WindowSelection,
 )
-from vyne._lists.source import TupleDataSource, VirtualizedDataSource
-from vyne._lists.window import plan_mask, plan_window, select_window
+from vyne._lists.source import (
+    KeyRegistry,
+    SequenceDataSource,
+    VirtualizedDataSource,
+)
+from vyne._lists.window import plan_mask, select_window
 
 __all__ = [
     "FixedExtentLayout",
     "FixedVirtualListController",
     "FixedVirtualListSpec",
+    "GenericVirtualListController",
     "IndexRange",
     "ItemRangeSegment",
+    "KeyRegistry",
     "RenderMask",
+    "SequenceDataSource",
     "SpacerSegment",
     "ViewportMetrics",
+    "VirtualListSpec",
+    "VirtualizedDataSource",
     "WindowConfig",
     "WindowPlan",
     "WindowSelection",
-    "TupleDataSource",
-    "VirtualizedDataSource",
     "compose_fixed_window",
+    "compose_generic_window",
     "plan_mask",
-    "plan_window",
-    "select_window",
     "render_fixed_virtual_list",
+    "render_generic_virtual_list",
+    "select_window",
 ]

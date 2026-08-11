@@ -39,7 +39,7 @@ from vyne.style import (
 from vyne.state import state
 from vyne.events import latest
 from vyne.launch import LaunchData
-from vyne.lists import List, ListController
+from vyne.lists import List, ListController, VirtualList
 
 __all__ = [
     "AppContext",
@@ -78,6 +78,7 @@ __all__ = [
     "Text",
     "TextInput",
     "ViewHandle",
+    "VirtualList",
     "run_app",
     "latest",
     "state",

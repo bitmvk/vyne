@@ -427,6 +427,82 @@ internal object PropertyTable {
             remove = { _ -> },
         ))
 
+        // -- Virtual-list markers (private, Box-only) --------------------
+        // The generic VirtualList marks its content Box and publishes sticky
+        // boundary/edge metadata on sticky cell wrappers.  The native scroll
+        // hosts consume these directly per frame; no bridge event or Python
+        // commit is involved.  Underscore props never reach generated public
+        // constructor stubs.
+        register(PropApplicator("_virtual_content",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.isVirtualContent = value as? Boolean ?: false
+                    if (!frame.isVirtualContent) {
+                        // The native sticky pass stops at the marker; restore
+                        // every displaced child before traversal is disabled.
+                        frame.restoreChildrenNatural()
+                    }
+                }
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.isVirtualContent = false
+                    frame.restoreChildrenNatural()
+                }
+            },
+        ))
+        register(PropApplicator("_virtual_sticky_edge",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyEdge = value as? String
+                    // A boundary/edge change must re-displace immediately
+                    // even on a stationary viewport (no scroll/layout yet).
+                    frame.refreshSticky()
+                }
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyEdge = null
+                    frame.restoreNaturalPosition()
+                    frame.refreshSticky()
+                }
+            },
+        ))
+        register(PropApplicator("_virtual_sticky_boundary_start",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyBoundaryStartPx =
+                        translationToPx(value, ctx.view.resources.displayMetrics.density)
+                    frame.refreshSticky()
+                }
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyBoundaryStartPx = 0f
+                    frame.refreshSticky()
+                }
+            },
+        ))
+        register(PropApplicator("_virtual_sticky_boundary_end",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyBoundaryEndPx =
+                        translationToPx(value, ctx.view.resources.displayMetrics.density)
+                    frame.refreshSticky()
+                }
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.stickyBoundaryEndPx = 0f
+                    frame.refreshSticky()
+                }
+            },
+        ))
+
         // -- Padding -----------------------------------------------------
         register(PropApplicator("padding_top",
             set = { ctx, value ->
@@ -751,12 +827,38 @@ internal object PropertyTable {
         register(PropApplicator("translation_x",
             // Translations are continuous: use float pixel precision
             // (int-quantized dp conversion would jitter sub-pixel values).
-            set = { ctx, value -> ctx.view.translationX = translationToPx(value, ctx.view.resources.displayMetrics.density) },
-            remove = { ctx -> ctx.view.translationX = 0f },
+            set = { ctx, value ->
+                val px = translationToPx(value, ctx.view.resources.displayMetrics.density)
+                ctx.view.translationX = px
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.naturalTranslationX = px
+                    frame.refreshSticky()
+                }
+            },
+            remove = { ctx ->
+                // Reset only the X axis and re-apply any active displacement;
+                // never clobber the Y axis or the paint Z of a sticky cell.
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.resetNaturalX()
+                } ?: run { ctx.view.translationX = 0f }
+            },
         ))
         register(PropApplicator("translation_y",
-            set = { ctx, value -> ctx.view.translationY = translationToPx(value, ctx.view.resources.displayMetrics.density) },
-            remove = { ctx -> ctx.view.translationY = 0f },
+            set = { ctx, value ->
+                val px = translationToPx(value, ctx.view.resources.displayMetrics.density)
+                ctx.view.translationY = px
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.naturalTranslationY = px
+                    frame.refreshSticky()
+                }
+            },
+            remove = { ctx ->
+                // Reset only the Y axis and re-apply any active displacement;
+                // never clobber the X axis or the paint Z of a sticky cell.
+                (ctx.view as? RoundedFrameLayout)?.let { frame ->
+                    frame.resetNaturalY()
+                } ?: run { ctx.view.translationY = 0f }
+            },
         ))
 
         // -- Text alignment / direction ----------------------------------

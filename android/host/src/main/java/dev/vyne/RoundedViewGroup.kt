@@ -172,13 +172,122 @@ private class VirtualListProjection(context: Context) {
 // ── RoundedFrameLayout ────────────────────────────────────────────
 
 internal class RoundedFrameLayout(context: Context) :
-    FrameLayout(context), RoundedView, MaxConstrainedView {
+    FrameLayout(context), RoundedView, MaxConstrainedView,
+    VirtualStickyCell, VirtualStickyContent {
 
     override var vyneMaxWidthPx: Int = 0
     override var vyneMaxHeightPx: Int = 0
     override val clipPath = Path()
     override var cornerRadii: Renderer.CornerRadii? = null
     override var clipsChildrenToBounds: Boolean = true
+
+    // Virtual-list sticky state (raw px).  Ordinary Boxes keep defaults and
+    // are never touched: the marker gates the native traversal, and sticky
+    // fields are set only by the private list metadata props.
+    override var isVirtualContent: Boolean = false
+        internal set
+    override var stickyEdge: String? = null
+        internal set
+    override var stickyBoundaryStartPx: Float = 0f
+        internal set
+    override var stickyBoundaryEndPx: Float = 0f
+        internal set
+    override var naturalTranslationX: Float = 0f
+        internal set
+    override var naturalTranslationY: Float = 0f
+        internal set
+    override val widthPx: Float get() = width.toFloat()
+    override val heightPx: Float get() = height.toFloat()
+
+    override val cellCount: Int get() = childCount
+    override fun cellAt(index: Int): VirtualStickyCell? =
+        getChildAt(index) as? VirtualStickyCell
+
+    override var stickyViewportStart: Float = 0f
+    override var stickyViewportEnd: Float = 0f
+    override var stickyVertical: Boolean = false
+
+    override fun applyStickyPosition(
+        vertical: Boolean,
+        main: Float,
+        displaced: Boolean,
+    ) {
+        if (vertical) {
+            if (translationY != main) translationY = main
+        } else {
+            if (translationX != main) translationX = main
+        }
+        // A displaced sticky paints above ordinary cells; reset without
+        // touching the user's elevation prop.
+        val z = if (displaced) STICKY_Z_PX else 0f
+        if (translationZ != z) translationZ = z
+    }
+
+    /**
+     * Restore the natural placed position when sticky metadata is removed.
+     *
+     * Resets both translation axes and the paint Z; used when a cell loses
+     * its sticky edge entirely or its content Box stops being virtual
+     * content.  Per-axis removals use `resetNaturalX`/`resetNaturalY` so an
+     * active displacement on the other axis is preserved.
+     */
+    override fun restoreNaturalPosition() {
+        if (translationX != naturalTranslationX) translationX = naturalTranslationX
+        if (translationY != naturalTranslationY) translationY = naturalTranslationY
+        if (translationZ != 0f) translationZ = 0f
+    }
+
+    /**
+     * Reset only the X axis (natural and visible), then re-apply any active
+     * sticky displacement.  The Y axis and its displacement are untouched.
+     */
+    fun resetNaturalX() {
+        naturalTranslationX = 0f
+        if (translationX != 0f) translationX = 0f
+        refreshSticky()
+    }
+
+    /**
+     * Reset only the Y axis (natural and visible), then re-apply any active
+     * sticky displacement.  The X axis and its displacement are untouched.
+     */
+    fun resetNaturalY() {
+        naturalTranslationY = 0f
+        if (translationY != 0f) translationY = 0f
+        refreshSticky()
+    }
+
+    /**
+     * Restore every direct cell wrapper to its natural position.  Runs when
+     * the virtual-content marker is removed so no child stays displaced.
+     */
+    fun restoreChildrenNatural() {
+        restoreVirtualContent(this)
+    }
+
+    /**
+     * Re-apply the sticky displacement after a natural-translation prop
+     * update, using the viewport the host last published to the content Box.
+     * No-op until the wrapper is attached under a marked content Box.
+     */
+    fun refreshSticky() {
+        if (stickyEdge == null) return
+        val content = parent as? VirtualStickyContent ?: return
+        if (!content.isVirtualContent) return
+        val vertical = content.stickyVertical
+        val natural = if (vertical) naturalTranslationY else naturalTranslationX
+        val extent = if (vertical) height.toFloat() else width.toFloat()
+        val target = computeStickyMain(
+            natural,
+            extent,
+            content.stickyViewportStart,
+            content.stickyViewportEnd,
+            stickyBoundaryStartPx,
+            stickyBoundaryEndPx,
+            stickyEdge,
+        )
+        applyStickyPosition(vertical, target, target != natural)
+    }
 
     override fun dispatchDraw(canvas: Canvas) {
         val checkpoint = applyChildClip(
@@ -220,6 +329,31 @@ internal class RoundedLinearLayout(context: Context) : LinearLayout(context), Ro
         setMeasuredDimension(w, h)
     }
 
+}
+
+/**
+ * Refresh sticky cell positions for one virtual-list scroll host.
+ *
+ * Gated on the marked direct content Box, so ordinary Scroll views pay
+ * nothing.  Loops only over realized direct children (O(realized)) and
+ * publishes the current viewport to the content so prop updates can
+ * re-displace immediately.
+ */
+private fun updateVirtualSticky(host: ViewGroup) {
+    val content = host.getChildAt(0) as? VirtualStickyContent ?: return
+    if (!content.isVirtualContent) return
+    val vertical = host is RoundedScrollView
+    val viewportStart = if (vertical) host.scrollY else host.scrollX
+    val viewportExtent = if (vertical) {
+        (host.height - host.paddingTop - host.paddingBottom).coerceAtLeast(0)
+    } else {
+        (host.width - host.paddingLeft - host.paddingRight).coerceAtLeast(0)
+    }
+    val viewportEnd = viewportStart + viewportExtent
+    content.stickyViewportStart = viewportStart.toFloat()
+    content.stickyViewportEnd = viewportEnd.toFloat()
+    content.stickyVertical = vertical
+    updateStickyContent(content, viewportStart.toFloat(), viewportEnd.toFloat(), vertical)
 }
 
 // ── RoundedScrollView ─────────────────────────────────────────────
@@ -268,6 +402,14 @@ internal class RoundedScrollView(context: Context) :
             if (pending.animated) super.smoothScrollTo(boundedX, boundedY)
             else super.scrollTo(boundedX, boundedY)
         }
+        // Cells may have moved, entered, or left; refresh stickies with the
+        // current viewport (no bridge event, no Python commit).
+        updateVirtualSticky(this)
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(l, t, oldl, oldt)
+        updateVirtualSticky(this)
     }
 
     private fun scrollBounds(): Pair<Int, Int> {
@@ -390,6 +532,14 @@ internal class RoundedHorizontalScrollView(context: Context) :
             if (pending.animated) super.smoothScrollTo(boundedX, boundedY)
             else super.scrollTo(boundedX, boundedY)
         }
+        // Cells may have moved, entered, or left; refresh stickies with the
+        // current viewport (no bridge event, no Python commit).
+        updateVirtualSticky(this)
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(l, t, oldl, oldt)
+        updateVirtualSticky(this)
     }
 
     private fun scrollBounds(): Pair<Int, Int> {
