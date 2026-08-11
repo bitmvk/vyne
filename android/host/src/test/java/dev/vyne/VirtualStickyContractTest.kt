@@ -18,6 +18,8 @@ class VirtualStickyContractTest {
 
     private val stickyProps = listOf(
         "_virtual_content",
+        "_virtual_content_width",
+        "_virtual_content_height",
         "_virtual_sticky_edge",
         "_virtual_sticky_boundary_start",
         "_virtual_sticky_boundary_end",

@@ -70,6 +70,9 @@ android {
             extensionKotlinDirs.forEach { java.srcDir(it) }
             extensionResDirs.forEach { res.srcDir(it) }
         }
+        getByName("test") {
+            resources.srcDir(rootProject.file("../tests/fixtures"))
+        }
     }
 
     compileOptions {

@@ -32,11 +32,11 @@ class KindSpecCoverage(unittest.TestCase):
                 f"Kind {kind.kind!r} missing description",
             )
 
-    def test_all_kinds_have_native_class(self):
+    def test_canonical_kinds_have_no_platform_factory_metadata(self):
         for kind in PRIMITIVE_KINDS.values():
-            self.assertTrue(
-                kind.native_class,
-                f"Kind {kind.kind!r} missing native_class",
+            self.assertFalse(
+                hasattr(kind, "native_class"),
+                f"Kind {kind.kind!r} leaked platform factory metadata",
             )
 
     def test_kind_leaf_consistency(self):

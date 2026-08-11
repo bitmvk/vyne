@@ -236,10 +236,9 @@ class KindSpec:
     props: frozenset[str] = field(default_factory=frozenset)
     # Event names this kind supports (for code generation)
     events: frozenset[str] = field(default_factory=frozenset)
-    # Human-readable description (for docs generation)
+    # Human-readable, platform-neutral description (for docs generation).
+    # Platform factories live in each host registry, never in this schema.
     description: str = ""
-    # Android View class hint for native creation (e.g. "FrameLayout", "TextView")
-    native_class: str = ""
 
     @property
     def leaf(self) -> bool:

@@ -712,6 +712,151 @@ class RendererSurfaceInstrumentationTest {
     }
 
     @Test
+    fun semanticContentExtentRollsBackAndResetsOnPooledReuse() {
+        val renderer = Renderer(context, {})
+        try {
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyDirectTransaction(
+                    RenderTransaction(
+                        1,
+                        listOf(
+                            RenderOperation.Create(1, "Scroll"),
+                            RenderOperation.SetProps(1, mapOf("width" to 200, "height" to 100)),
+                            RenderOperation.Create(2, "Box"),
+                            RenderOperation.SetProps(
+                                2,
+                                mapOf(
+                                    "_virtual_content_width" to 200,
+                                    "_virtual_content_height" to 500,
+                                ),
+                            ),
+                            RenderOperation.InsertChild(1, 2, 0),
+                            RenderOperation.InsertChild(0, 1, 0),
+                        ),
+                    ),
+                ),
+            )
+            val density = renderer.root.resources.displayMetrics.density
+            val original = renderer.viewForTest(2) as RoundedFrameLayout
+            assertEquals((500 * density).toInt(), original.virtualContentHeightPx)
+
+            val result = renderer.applyDirectTransaction(
+                RenderTransaction(
+                    2,
+                    listOf(
+                        RenderOperation.SetProp(2, "_virtual_content_height", 100),
+                        RenderOperation.Create(3, "Box"),
+                        RenderOperation.InsertChild(1, 3, 1),
+                    ),
+                ),
+            )
+            assertEquals(Renderer.ApplyResult.PARTIAL, result)
+            assertEquals((500 * density).toInt(), original.virtualContentHeightPx)
+
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyDirectTransaction(
+                    RenderTransaction(
+                        3,
+                        listOf(
+                            RenderOperation.RemoveChild(0, 1),
+                            RenderOperation.Remove(1),
+                            RenderOperation.Create(4, "Box"),
+                            RenderOperation.InsertChild(0, 4, 0),
+                        ),
+                    ),
+                ),
+            )
+            val reused = renderer.viewForTest(4) as RoundedFrameLayout
+            assertSame(original, reused)
+            assertEquals(0, reused.virtualContentWidthPx)
+            assertEquals(0, reused.virtualContentHeightPx)
+        } finally {
+            renderer.dispose()
+        }
+    }
+
+    @Test
+    fun interactiveScrollbarRollsBackAndResetsOnRemoval() {
+        val renderer = Renderer(context, {})
+        try {
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyDirectTransaction(
+                    RenderTransaction(
+                        1,
+                        listOf(
+                            RenderOperation.Create(1, "Scroll"),
+                            RenderOperation.SetProps(
+                                1,
+                                mapOf(
+                                    "width" to 200,
+                                    "height" to 100,
+                                    "interactive_scrollbar" to true,
+                                ),
+                            ),
+                            RenderOperation.Create(2, "Layout"),
+                            RenderOperation.SetProps(
+                                2,
+                                mapOf(
+                                    "orientation" to "vertical",
+                                    "width" to 200,
+                                    "height" to 300,
+                                ),
+                            ),
+                            RenderOperation.InsertChild(1, 2, 0),
+                            RenderOperation.InsertChild(0, 1, 0),
+                        ),
+                    ),
+                ),
+            )
+            val original = renderer.viewForTest(1) as RoundedScrollView
+            assertTrue(original.interactiveScrollbarEnabled)
+            assertFalse(original.isVerticalScrollBarEnabled)
+
+            // The second direct Scroll child fails during apply. Rollback must
+            // restore the interactive prop changed earlier in this transaction.
+            val result = renderer.applyDirectTransaction(
+                RenderTransaction(
+                    2,
+                    listOf(
+                        RenderOperation.SetProp(1, "interactive_scrollbar", false),
+                        RenderOperation.Create(3, "Box"),
+                        RenderOperation.InsertChild(1, 3, 1),
+                    ),
+                ),
+            )
+            assertEquals(Renderer.ApplyResult.PARTIAL, result)
+            assertTrue(original.interactiveScrollbarEnabled)
+            assertFalse(original.isVerticalScrollBarEnabled)
+
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyDirectTransaction(
+                    RenderTransaction(
+                        3,
+                        listOf(
+                            RenderOperation.RemoveChild(0, 1),
+                            RenderOperation.Remove(1),
+                            RenderOperation.Create(4, "Scroll"),
+                            RenderOperation.InsertChild(0, 4, 0),
+                        ),
+                    ),
+                ),
+            )
+            // Scroll hosts are not cell-pooled. A fresh host starts from the
+            // passive native scrollbar default; cell pooling remains limited
+            // to reusable cell view kinds.
+            val fresh = renderer.viewForTest(4) as RoundedScrollView
+            assertFalse(fresh.interactiveScrollbarEnabled)
+            assertTrue(fresh.isVerticalScrollBarEnabled)
+        } finally {
+            renderer.dispose()
+        }
+    }
+
+    @Test
     fun rolledBackCellReuseRestoresTheOriginalTreeExactly() {
         val renderer = Renderer(context, {})
         try {

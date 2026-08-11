@@ -152,6 +152,33 @@ internal fun dimensionToPx(value: Any?, density: Float): Int {
     }
 }
 
+/** Android stores measured sizes in the low 24 bits of a measured dimension. */
+internal const val ANDROID_MEASURED_CONTENT_EXTENT_LIMIT_PX: Int =
+    View.MEASURED_SIZE_MASK
+
+/**
+ * Convert Python's logical positioned-content extent without silent truncation.
+ *
+ * Larger logical lists need segmented/rebased native scrolling; until that
+ * host tool exists, rejecting the transaction is safer than publishing an
+ * unreachable tail.
+ */
+internal fun virtualContentExtentToPx(value: Any?, density: Float): Int {
+    val logical = (value as? Number)?.toDouble()
+        ?: throw IllegalArgumentException("virtual content extent must be numeric")
+    val pixels = logical * density.toDouble()
+    require(logical.isFinite() && logical >= 0.0 && pixels.isFinite()) {
+        "virtual content extent must be finite and non-negative"
+    }
+    require(pixels <= ANDROID_MEASURED_CONTENT_EXTENT_LIMIT_PX.toDouble()) {
+        "virtual content extent ${logical}dp (${pixels.toLong()}px) exceeds " +
+            "Android host measured-size limit " +
+            "$ANDROID_MEASURED_CONTENT_EXTENT_LIMIT_PX px; " +
+            "segmented/rebased scrolling is not implemented"
+    }
+    return pixels.toInt()
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Color wire representation
 // ─────────────────────────────────────────────────────────────────────────
@@ -426,6 +453,17 @@ internal object PropertyTable {
             },
             remove = { _ -> },
         ))
+        register(PropApplicator("interactive_scrollbar",
+            kindApplicable = setOf("Scroll", "HorizontalScroll"),
+            set = { ctx, value ->
+                val scroll = ctx.view as? VyneScrollContainer
+                    ?: error("interactive scrollbar applied to unsupported ${ctx.view.javaClass.simpleName}")
+                scroll.interactiveScrollbarEnabled = value as? Boolean ?: false
+            },
+            remove = { ctx ->
+                (ctx.view as? VyneScrollContainer)?.interactiveScrollbarEnabled = false
+            },
+        ))
 
         // -- Virtual-list markers (private, Box-only) --------------------
         // The generic VirtualList marks its content Box and publishes sticky
@@ -433,6 +471,36 @@ internal object PropertyTable {
         // hosts consume these directly per frame; no bridge event or Python
         // commit is involved.  Underscore props never reach generated public
         // constructor stubs.
+        register(PropApplicator("_virtual_content_width",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                val frame = ctx.view as? RoundedFrameLayout
+                    ?: error("virtual content width applied to unsupported ${ctx.view.javaClass.simpleName}")
+                frame.virtualContentWidthPx = virtualContentExtentToPx(
+                    value, ctx.view.resources.displayMetrics.density
+                )
+                frame.requestLayout()
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.virtualContentWidthPx = 0
+                ctx.view.requestLayout()
+            },
+        ))
+        register(PropApplicator("_virtual_content_height",
+            kindApplicable = setOf("Box"),
+            set = { ctx, value ->
+                val frame = ctx.view as? RoundedFrameLayout
+                    ?: error("virtual content height applied to unsupported ${ctx.view.javaClass.simpleName}")
+                frame.virtualContentHeightPx = virtualContentExtentToPx(
+                    value, ctx.view.resources.displayMetrics.density
+                )
+                frame.requestLayout()
+            },
+            remove = { ctx ->
+                (ctx.view as? RoundedFrameLayout)?.virtualContentHeightPx = 0
+                ctx.view.requestLayout()
+            },
+        ))
         register(PropApplicator("_virtual_content",
             kindApplicable = setOf("Box"),
             set = { ctx, value ->

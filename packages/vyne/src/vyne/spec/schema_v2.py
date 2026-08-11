@@ -106,6 +106,11 @@ _generic_props: list[PropSpec] = [
     PropSpec("_virtual_list_initial_offset", _non_negative_number, default=0,
              wire_name="_virtualListInitialOffset", drop_default=True,
              applies_to=frozenset({"Scroll", "HorizontalScroll"})),
+    # Platform-neutral request for a host-native draggable scroll indicator.
+    # Plain Scroll opts in; List and VirtualList publish True by default.
+    PropSpec("interactive_scrollbar", _bool, default=False,
+             wire_name="interactiveScrollbar", drop_default=True,
+             applies_to=frozenset({"Scroll", "HorizontalScroll"})),
     # Padding (resolved to individual edges by lowering)
     PropSpec("padding_top", _non_negative_number, default=0,
              wire_name="paddingTop", drop_default=True),
@@ -229,6 +234,12 @@ _widget_props: dict[str, list[PropSpec]] = {
         # the native scroll hosts apply the sticky movement per frame.
         PropSpec("_virtual_content", _bool, default=False,
                  wire_name="_virtualListContent", drop_default=True),
+        # Semantic positioned-content extent. Hosts enforce these logical
+        # sizes with their native measurement/content-size mechanism.
+        PropSpec("_virtual_content_width", _non_negative_number, default=0,
+                 wire_name="_virtualContentWidth", drop_default=True),
+        PropSpec("_virtual_content_height", _non_negative_number, default=0,
+                 wire_name="_virtualContentHeight", drop_default=True),
         PropSpec("_virtual_sticky_edge", _sticky_edge, default=None,
                  wire_name="_virtualStickyEdge", drop_default=True),
         PropSpec("_virtual_sticky_boundary_start", _non_negative_number,
@@ -345,7 +356,6 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=None,
-        native_class="FrameLayout",
         description="Generic container with frame (absolute + z-order) layout.",
     ),
     "Layout": KindSpec(
@@ -355,7 +365,6 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
         ),
         required=frozenset({"orientation"}),
         max_children=None,
-        native_class="LinearLayout",
         description="Linear layout container (horizontal or vertical).",
     ),
     "Scroll": KindSpec(
@@ -364,7 +373,6 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=1,
-        native_class="ScrollView",
         description="Vertical scroll container; at most one direct child.",
     ),
     "HorizontalScroll": KindSpec(
@@ -373,37 +381,31 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=1,
-        native_class="HorizontalScrollView",
         description="Private horizontal scroll container; at most one direct child.",
     ),
     "Text": KindSpec(
         kind="Text",
         max_children=0,
-        native_class="TextView",
         description="Leaf text display widget.",
     ),
     "TextInput": KindSpec(
         kind="TextInput",
         max_children=0,
-        native_class="EditText",
         description="Editable text input widget with IME support.",
     ),
     "Image": KindSpec(
         kind="Image",
         max_children=0,
-        native_class="ImageView",
         description="Image display widget.",
     ),
     "Path": KindSpec(
         kind="Path",
         max_children=0,
-        native_class="PathView",
         description="Custom Path widget rendering SVG-like path commands.",
     ),
     "Canvas": KindSpec(
         kind="Canvas",
         max_children=0,
-        native_class="CanvasView",
         description="Custom Canvas widget rendering a display list of draw operations.",
     ),
 }
@@ -627,6 +629,13 @@ _LAYOUT_METRICS_PAYLOAD_SPECS: dict[str, ValueSpec] = {
     "height": _non_negative_number,
 }
 
+_SCROLL_SEEK_PAYLOAD_SPECS: dict[str, ValueSpec] = {
+    "target_offset_x": _non_negative_number,
+    "target_offset_y": _non_negative_number,
+    "final": _bool,
+    "event_time": ValueSpec(type_name="int", non_negative=True),
+}
+
 _SCROLL_METRICS_PAYLOAD_SPECS: dict[str, ValueSpec] = {
     "offset_x": _non_negative_number,
     "offset_y": _non_negative_number,
@@ -733,6 +742,14 @@ EVENT_SPECS: dict[str, EventSpec] = {
         applies_to=frozenset({"Scroll", "HorizontalScroll"}),
         payload_specs=_SCROLL_METRICS_PAYLOAD_SPECS,
         payload_wire_names={name: name for name in _SCROLL_METRICS_PAYLOAD_SPECS},
+        public_callback=False,
+    ),
+    "scroll_seek": EventSpec(
+        name="scroll_seek",
+        payload_fields=frozenset(_SCROLL_SEEK_PAYLOAD_SPECS),
+        applies_to=frozenset({"Scroll", "HorizontalScroll"}),
+        payload_specs=_SCROLL_SEEK_PAYLOAD_SPECS,
+        payload_wire_names={name: name for name in _SCROLL_SEEK_PAYLOAD_SPECS},
         public_callback=False,
     ),
 }

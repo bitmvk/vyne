@@ -106,6 +106,7 @@ retained by application-owned work.
 
 ## Related
 
+- [list-host-contract.md](list-host-contract.md) — portable list policy/host split
 - [renderer.md](renderer.md) — the UI-thread applier
 - [input.md](input.md) — touch routing
 - [framework/transport.md](../framework/transport.md) — the call surface

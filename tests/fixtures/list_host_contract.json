@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "units": "logical",
+  "constants": {
+    "minimum_thumb_extent": 40.0,
+    "touch_target_extent": 32.0,
+    "visual_thumb_thickness": 7.0,
+    "seek_target_tolerance_px": 1,
+    "seek_emit_interval_ms": 32,
+    "seek_watchdog_ms": 750,
+    "seek_max_retries": 2
+  },
+  "sticky": [
+    {
+      "name": "start-pins",
+      "natural": 0.0,
+      "extent": 30.0,
+      "viewport_start": 60.0,
+      "viewport_end": 160.0,
+      "boundary_start": 0.0,
+      "boundary_end": 230.0,
+      "edge": "start",
+      "expected": 60.0
+    },
+    {
+      "name": "start-push-off",
+      "natural": 0.0,
+      "extent": 30.0,
+      "viewport_start": 220.0,
+      "viewport_end": 320.0,
+      "boundary_start": 0.0,
+      "boundary_end": 230.0,
+      "edge": "start",
+      "expected": 200.0
+    },
+    {
+      "name": "start-half-open-section-end",
+      "natural": 0.0,
+      "extent": 30.0,
+      "viewport_start": 230.0,
+      "viewport_end": 330.0,
+      "boundary_start": 0.0,
+      "boundary_end": 230.0,
+      "edge": "start",
+      "expected": 0.0
+    },
+    {
+      "name": "start-half-open-section-begin",
+      "natural": 100.0,
+      "extent": 20.0,
+      "viewport_start": 0.0,
+      "viewport_end": 100.0,
+      "boundary_start": 100.0,
+      "boundary_end": 200.0,
+      "edge": "start",
+      "expected": 100.0
+    },
+    {
+      "name": "end-pins",
+      "natural": 190.0,
+      "extent": 40.0,
+      "viewport_start": 60.0,
+      "viewport_end": 160.0,
+      "boundary_start": 0.0,
+      "boundary_end": 230.0,
+      "edge": "end",
+      "expected": 120.0
+    },
+    {
+      "name": "end-restores-after-boundary",
+      "natural": 190.0,
+      "extent": 40.0,
+      "viewport_start": 230.0,
+      "viewport_end": 330.0,
+      "boundary_start": 0.0,
+      "boundary_end": 230.0,
+      "edge": "end",
+      "expected": 190.0
+    },
+    {
+      "name": "oversized-sticky-natural",
+      "natural": 10.0,
+      "extent": 100.0,
+      "viewport_start": 20.0,
+      "viewport_end": 80.0,
+      "boundary_start": 0.0,
+      "boundary_end": 100.0,
+      "edge": "start",
+      "expected": 10.0
+    },
+    {
+      "name": "no-edge-natural",
+      "natural": 12.0,
+      "extent": 20.0,
+      "viewport_start": 30.0,
+      "viewport_end": 80.0,
+      "boundary_start": 0.0,
+      "boundary_end": 100.0,
+      "edge": null,
+      "expected": 12.0
+    }
+  ],
+  "scrollbar": [
+    {
+      "name": "vertical-minimum-thumb-midpoint",
+      "axis": "vertical",
+      "viewport_extent": 400.0,
+      "content_extent": 4000.0,
+      "scroll_offset": 1800.0,
+      "track_start": 0.0,
+      "track_extent": 400.0,
+      "expected": {
+        "thumb_start": 180.0,
+        "thumb_extent": 40.0,
+        "max_scroll": 3600.0
+      },
+      "pointer": 200.0,
+      "grab_offset": 20.0,
+      "expected_target": 1800.0
+    },
+    {
+      "name": "horizontal-proportional-thumb",
+      "axis": "horizontal",
+      "viewport_extent": 400.0,
+      "content_extent": 800.0,
+      "scroll_offset": 200.0,
+      "track_start": 0.0,
+      "track_extent": 400.0,
+      "expected": {
+        "thumb_start": 100.0,
+        "thumb_extent": 200.0,
+        "max_scroll": 400.0
+      },
+      "pointer": 150.0,
+      "grab_offset": 50.0,
+      "expected_target": 200.0
+    },
+    {
+      "name": "track-tap-centers-thumb",
+      "axis": "vertical",
+      "viewport_extent": 400.0,
+      "content_extent": 4000.0,
+      "scroll_offset": 0.0,
+      "track_start": 0.0,
+      "track_extent": 400.0,
+      "expected": {
+        "thumb_start": 0.0,
+        "thumb_extent": 40.0,
+        "max_scroll": 3600.0
+      },
+      "pointer": 200.0,
+      "expected_grab_offset": 20.0,
+      "expected_target": 1800.0
+    },
+    {
+      "name": "start-clamp",
+      "axis": "vertical",
+      "viewport_extent": 100.0,
+      "content_extent": 1000.0,
+      "scroll_offset": 500.0,
+      "track_start": 10.0,
+      "track_extent": 100.0,
+      "expected": {
+        "thumb_start": 43.3333333333,
+        "thumb_extent": 40.0,
+        "max_scroll": 900.0
+      },
+      "pointer": 0.0,
+      "grab_offset": 20.0,
+      "expected_target": 0.0
+    },
+    {
+      "name": "end-clamp",
+      "axis": "horizontal",
+      "viewport_extent": 100.0,
+      "content_extent": 1000.0,
+      "scroll_offset": 500.0,
+      "track_start": 10.0,
+      "track_extent": 100.0,
+      "expected": {
+        "thumb_start": 43.3333333333,
+        "thumb_extent": 40.0,
+        "max_scroll": 900.0
+      },
+      "pointer": 1000.0,
+      "grab_offset": 20.0,
+      "expected_target": 900.0
+    },
+    {
+      "name": "endpoint-at-maximum",
+      "axis": "vertical",
+      "viewport_extent": 300.0,
+      "content_extent": 3000.0,
+      "scroll_offset": 2700.0,
+      "track_start": 5.0,
+      "track_extent": 300.0,
+      "expected": {
+        "thumb_start": 265.0,
+        "thumb_extent": 40.0,
+        "max_scroll": 2700.0
+      },
+      "pointer": 285.0,
+      "grab_offset": 20.0,
+      "expected_target": 2700.0
+    },
+    {
+      "name": "no-scroll-equal-extents",
+      "axis": "vertical",
+      "viewport_extent": 400.0,
+      "content_extent": 400.0,
+      "scroll_offset": 0.0,
+      "track_start": 0.0,
+      "track_extent": 400.0,
+      "expected": null
+    },
+    {
+      "name": "no-scroll-short-content",
+      "axis": "horizontal",
+      "viewport_extent": 400.0,
+      "content_extent": 100.0,
+      "scroll_offset": 0.0,
+      "track_start": 0.0,
+      "track_extent": 400.0,
+      "expected": null
+    }
+  ],
+  "projection": [
+    {
+      "name": "inside-range",
+      "projected_offset": 500.0,
+      "viewport_extent": 100.0,
+      "content_extent": 1000.0,
+      "expected": 500.0
+    },
+    {
+      "name": "clamped-to-end",
+      "projected_offset": 5000.0,
+      "viewport_extent": 100.0,
+      "content_extent": 1000.0,
+      "expected": 900.0
+    },
+    {
+      "name": "short-content-clamped-zero",
+      "projected_offset": 50.0,
+      "viewport_extent": 200.0,
+      "content_extent": 100.0,
+      "expected": 0.0
+    },
+    {
+      "name": "negative-projection-clamped-zero",
+      "projected_offset": -250.0,
+      "viewport_extent": 100.0,
+      "content_extent": 1000.0,
+      "expected": 0.0
+    }
+  ]
+}

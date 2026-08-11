@@ -141,8 +141,8 @@ def Column(*children: Any, **props: Any) -> Element:
 def Scroll(*children: Any, **props: Any) -> Element:
     """A vertical scrollable container.
 
-    Android ScrollView can only host a single child, so multiple children
-    are auto-wrapped in a Column.
+    The canonical Scroll contract has one direct content child, so multiple
+    children are auto-wrapped in a Column on every host.
     """
     normalized = normalize_children(children)
     if len(normalized) > 1:

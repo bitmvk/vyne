@@ -18,6 +18,16 @@ class RendererTransactionTest {
     // ── Accessibility property contracts ──────────────────────────────
 
     @Test
+    fun everyCanonicalKindHasAnAndroidFactory() {
+        val registry = ElementRegistry()
+        registerNativeWidgets(registry)
+        assertEquals(
+            dev.vyne.generated.ElementContracts.KINDS,
+            registry.allKinds(),
+        )
+    }
+
+    @Test
     fun accessibilityStateDescriptionIsInElementContracts() {
         // Verify that the new accessibility_state_description prop is in the
         // generated Box prop set (it was added to the schema spec in round 5).

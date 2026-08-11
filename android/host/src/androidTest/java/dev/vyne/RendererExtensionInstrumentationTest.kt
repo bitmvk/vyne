@@ -50,7 +50,7 @@ class RendererExtensionInstrumentationTest {
 
     private fun registryWithThrowingExtension(): ElementRegistry =
         ElementRegistry().apply {
-            registerNativeWidgets(context, this)
+            registerNativeWidgets(this)
             register(
                 ElementSpec(
                     kind = "TimerRing",
@@ -78,7 +78,7 @@ class RendererExtensionInstrumentationTest {
 
     private fun registryWithExtension(): ElementRegistry =
         ElementRegistry().apply {
-            registerNativeWidgets(context, this)
+            registerNativeWidgets(this)
             register(
                 ElementSpec(
                     kind = "TimerRing",

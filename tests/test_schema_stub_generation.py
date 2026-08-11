@@ -151,9 +151,13 @@ class SchemaDerivedPolicyTests(unittest.TestCase):
         self.assertEqual(gen.container_kinds(schema), CONTAINER_KINDS_SET | {"Flow"})
         events = gen.public_events(schema)
         self.assertNotIn("scroll_metrics", events)
+        self.assertNotIn("scroll_seek", events)
         self.assertNotIn("layout_metrics", events)
         self.assertIn("click", events)
-        self.assertEqual(INTERNAL_EVENTS, frozenset({"layout_metrics", "scroll_metrics"}))
+        self.assertEqual(
+            INTERNAL_EVENTS,
+            frozenset({"layout_metrics", "scroll_metrics", "scroll_seek"}),
+        )
         self.assertIn("Flow", gen.build_model(schema)[5])
         original = dict(gen._CONSTRUCTORS)
         try:

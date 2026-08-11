@@ -8,7 +8,7 @@ Regenerate with:
 Source of truth: ``vyne.spec.schema_v2``.
 """
 
-# schema-v2 source hash: 80b7188c2d24d6c0
+# schema-v2 source hash: 878f4334d5d52482
 
 from typing import Any, Literal, TypeAlias, TypedDict, Unpack
 
@@ -109,7 +109,7 @@ class ColumnProps(ContainerProps, total=False):
     ...
 
 class ScrollProps(ContainerProps, total=False):
-    ...
+    interactive_scrollbar: bool | None
 
 class TextProps(BaseProps, total=False):
     font_size: int | float | None
@@ -151,7 +151,7 @@ class CanvasProps(BaseProps, total=False):
     view_box: list[int | float] | tuple[int | float, ...] | None
 
 class HorizontalScrollProps(ContainerProps, total=False):
-    ...
+    interactive_scrollbar: bool | None
 
 
 @dataclass(frozen=True)

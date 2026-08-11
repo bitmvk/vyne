@@ -255,7 +255,7 @@ flattened sections live in `tests/support/list_conformance.py`.
 
 `vyne.lists.VirtualList` is the generic engine: it consumes the M1 contracts
 and a `VirtualLayout` strategy, composes positioned realized cells from
-ordinary primitives (a Scroll hosting a FrameLayout Box with keyed, sized,
+ordinary primitives (a Scroll hosting a canonical Box with keyed, sized,
 translated cell wrappers), and feeds per-cell `layout_metrics` back into
 the layout.  Imperative `scroll_to_offset`/`index`/`key` run through the
 single public `vyne.ListController`, which owns the private generic engine
@@ -329,10 +329,10 @@ primitive or concept.  Three architecture options were considered:
    translations on every scroll frame.  Zero host work, but every frame
    becomes a bridge round-trip plus a render commit — precisely what the
    framework boundary forbids for frame-sensitive work.
-3. **Ordinary Box positioning plus minimal private sticky metadata applied
-   by the existing native scroll hosts.**  `Box`/FrameLayout already gives a
-   reliable explicit content extent and 2D translated children; only the
-   per-frame sticky displacement is native, driven by small private props.
+3. **Ordinary Box positioning plus minimal private host metadata applied by
+   existing scroll hosts.** `Box` gives canonical positioned children;
+   semantic content extents and per-frame sticky displacement are implemented
+   mechanically by each platform host from small private props.
 
 **Selected: option 3.**  The generic engine keeps composing ordinary Boxes;
 Python owns realization and publishes, per sticky cell, its natural
@@ -354,12 +354,13 @@ Authority split (unchanged boundary, one addition):
   with underscore names, so they never appear in generated public
   constructor stubs, and they are dropped at default so ordinary Boxes and
   non-sticky cells carry nothing.
-- **Android owns** the per-frame displacement: the scroll hosts run an
-  O(realized) pass over a marked content's direct children on native
-  `onScrollChanged` and after layout (initial offset, deferred scrolls,
-  child changes).  Unmarked content returns immediately.  No bridge event
-  is emitted and no Python commit is required; translation-only changes
-  never trigger `layout_metrics`, so measurement feedback is untouched.
+- **Each platform host owns** the per-frame displacement: Android scroll
+  hosts run an O(realized) pass over a marked content's direct children on
+  native `onScrollChanged` and after layout (initial offset, deferred scrolls,
+  child changes). Unmarked content returns immediately. No bridge event is
+  emitted and no Python commit is required; translation-only changes never
+  trigger `layout_metrics`, so measurement feedback is untouched. A future
+  iOS adapter implements this same host contract with UIKit mechanics.
 
 Positioning formula (content coordinates, half-open activation): a sticky
 cell is displaced only while the viewport overlaps its boundary interval
@@ -409,27 +410,27 @@ real `RoundedScrollView`/`RoundedHorizontalScrollView` hosting a marked
 host out, and verifies header/footer per-frame displacement, restoration
 when the viewport leaves the section, the unmarked-content gate, marker
 removal restoration, and that translation-only scrolls never trigger a
-layout callback.  Three production-composition tests additionally apply
-the exact generic-list wire shape through the real `Renderer` and prove
-the content Box reaches its declared extent on both axes, that the host
-has a real scroll range, and that sticky displacement works through that
-production composition — all 7 tests pass on the emulator.  A CI test
+layout callback.  Production-composition tests additionally apply the exact generic-list wire
+shape through the real `Renderer` and prove the content Box reaches its
+semantic extent on both axes, the host has a real scroll range, sticky
+movement works through that composition, and a scrollbar thumb can drag far
+across a 10,000-unit range, including transactional seek/reveal and rejection
+recovery — all 9 focused tests pass on the emulator.  A CI test
 (`tests/test_kotlin_contracts_generation.py`) runs
 `tools/generate_schema.py --check` to pin the Kotlin contract drift.
 
-Content extent (device fix): a generic content Box is a FrameLayout, and
-FrameLayout ignores its own LayoutParams height under ScrollView's
-UNSPECIFIED main-axis measurement, collapsing to its tallest realized
-cell — the declared content `height` alone would give the host no scroll
-range (measured ~9.9dp for a 10,000dp declaration).  The generic engine
-now composes an inert, transparent, non-interactive extent sentinel as
- the first child of the content Box, sized to the full declared
-`content_width`/`content_height`: it has no listeners, background,
-clickability, or accessibility description; realized cells are composed
-after it so they draw above it; and the native sticky traversal visits it
-as a constant non-sticky cell.  This is the minimal reliable Box-based
-fix; the fixed `List` is unaffected because its content is a linear
-layout with spacers summing to the extent.
+Content extent (portable host contract): Python publishes semantic private
+`_virtual_content_width`/`_virtual_content_height` values on the positioned
+content Box. Android enforces them during `RoundedFrameLayout` measurement,
+which avoids FrameLayout collapsing to its tallest realized child under
+ScrollView's UNSPECIFIED main-axis measurement. No inert sentinel or other
+Android workaround appears in the Python tree. A future iOS adapter maps the
+same values to its native content-size mechanism. Android rejects a semantic
+positioned-content extent above `View.MEASURED_SIZE_MASK` device pixels rather
+than silently truncating it; a future segmented/rebased host tool is required
+for larger Android ranges. This density-dependent adapter limit does not set a
+cross-platform logical maximum. The fixed `List` is unaffected by the semantic
+Box path because its linear-layout spacers already sum to the extent.
 
 Limitations:
 
@@ -438,8 +439,48 @@ Limitations:
   sticky math plus the projection assume LTR `scrollX >= 0`.
 - Same-axis nested scrolling remains unsupported or platform-dependent, as
   documented under nested lists.
-- Sticky behavior is Android-only for now; iOS/non-Android hosts would
-  need the same host-side pass.
+- Sticky and interactive-scrollbar mechanics are implemented by Android now;
+  an iOS host adapter remains required, using the shared fixture semantics.
+
+## Platform-neutral list host contract
+
+The production split is explicit:
+
+- Python owns sources, keys, layout, realization, anchor correction, accepted
+  controller state, semantic content extent, and sticky constraints.
+- A host registry maps canonical kinds to platform views. The canonical
+  `KindSpec` has no Android class names; `NativeWidgets.kt` is Android's sole
+  factory map. A future iOS registry supplies UIKit factories independently.
+- Native hosts provide generic frame-sensitive tools only: scroll physics,
+  measurement, view reuse, sticky displacement, and interactive scrollbar
+  drawing/touch. They never inspect list items, keys, or layouts.
+
+`vyne._lists.host_contract` is the strict pure-Python reference for clamped
+host metrics, sticky main-axis positioning, projected-offset bounds, and
+interactive scrollbar geometry. `tests/fixtures/list_host_contract.json` is
+the canonical cross-language fixture consumed by Python and Android JVM tests;
+a future iOS test target must consume the same file. Native deceleration curves
+do not need to match: `projected_offset` means only the host's best clamped
+estimate of its own final landing position.
+
+`List` and `VirtualList` default `interactive_scrollbar=True`; a plain `Scroll`
+opts in explicitly. When content is scrollable, the host keeps a 7-unit visual
+thumb visible on the right (vertical) or bottom (horizontal), uses a 32-unit
+edge touch target and a minimum 40-unit main-axis thumb, preserves an in-thumb
+grab, and centers the thumb for a track tap. The pointer that starts a drag
+retains ownership until release; additional pointers cannot move the thumb.
+A plain `Scroll` updates its native position directly. `List` and `VirtualList`
+install an internal latest `scroll_seek` handler instead: the thumb follows the
+finger, while actual content remains at its accepted window until Python
+publishes bounded destination cells and the existing non-animated `scroll_to`
+effect reveals them after acceptance. Non-final crossings are throttled to 32
+ms, final release bypasses throttling, and only the newest pending handler event
+survives existing Runtime backpressure. Two 750 ms final retries recover a
+rejected/lost reveal without an acknowledgement latch. The crossing still has
+latency; this ordering prevents blank destinations without changing the commit,
+revision, scheduler, or public controller architecture. A future iOS host must
+implement the same fixture-pinned handshake. RTL horizontal placement remains
+deferred.
 
 ## Implementation status — M4 (public migration, controller unification, gate)
 

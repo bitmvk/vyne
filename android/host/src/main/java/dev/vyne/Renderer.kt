@@ -813,7 +813,16 @@ internal class Renderer(
         recordAcceptedProp(id, name, present = true, wireValue = value)
         transactionApplier.record { restoreAll(listOf(undo)) }
         pendingResets[id]?.remove(name)
+        val targetView = views[id]
         setProp(id, name, value)
+        if (name == "interactive_scrollbar" && value != true) {
+            transactionApplier.afterCommit {
+                val scroll = targetView as? VyneScrollContainer
+                if (scroll?.interactiveScrollbarEnabled == false) {
+                    scroll.clearVirtualScrollSeekState()
+                }
+            }
+        }
     }
 
     private fun applyRemovePropOperation(id: Int, name: String) {
@@ -821,7 +830,16 @@ internal class Renderer(
         val undo = capturePropUndo(id, name)
         recordAcceptedProp(id, name, present = false, wireValue = null)
         transactionApplier.record { restoreAll(listOf(undo)) }
+        val targetView = views[id]
         removeProp(id, name)
+        if (name == "interactive_scrollbar") {
+            transactionApplier.afterCommit {
+                val scroll = targetView as? VyneScrollContainer
+                if (scroll?.interactiveScrollbarEnabled == false) {
+                    scroll.clearVirtualScrollSeekState()
+                }
+            }
+        }
     }
 
     private fun applyListenOperation(
@@ -861,7 +879,15 @@ internal class Renderer(
                 )
             }
         }
+        val targetView = views[id]
         unlisten(id, event)
+        if (event == "scroll_seek") {
+            transactionApplier.afterCommit {
+                if (eventBindings.records[id to event] == null) {
+                    (targetView as? VyneScrollContainer)?.clearVirtualScrollSeekState()
+                }
+            }
+        }
     }
 
     private fun applyInsertOperation(
@@ -914,8 +940,8 @@ internal class Renderer(
             error("scroll_to: target ${operation.id} is not a scroll container")
         }
         val density = view.resources.displayMetrics.density
-        val x = (operation.offsetX * density).toInt()
-        val y = (operation.offsetY * density).toInt()
+        val x = logicalScrollOffsetToPx(operation.offsetX, density)
+        val y = logicalScrollOffsetToPx(operation.offsetY, density)
         // Scrolling is an accepted effect, not tree state. Start it only after
         // every structural operation in the transaction has succeeded.
         transactionApplier.afterCommit {
@@ -2147,6 +2173,12 @@ internal class Renderer(
                     _, scrollX, scrollY, _, _ ->
                     if (applyingCommit) return@OnScrollChangeListener
                     val now = SystemClock.uptimeMillis()
+                    if (view.consumeSeekRevealMetricsSuppression(scrollX, scrollY, now)) {
+                        lastX = scrollX
+                        lastY = scrollY
+                        lastTime = now
+                        return@OnScrollChangeListener
+                    }
                     val elapsedMs = (now - lastTime).coerceAtLeast(1L)
                     val density = view.resources.displayMetrics.density
                     val velocityX = pixelsToDp(
@@ -2175,14 +2207,18 @@ internal class Renderer(
                         lastX = view.scrollX
                         lastY = view.scrollY
                         lastTime = SystemClock.uptimeMillis()
-                        emitScrollMetrics(
-                            view,
-                            id,
-                            handler,
-                            0f,
-                            0f,
-                            lastTime,
-                        )
+                        if (!view.consumeSeekRevealMetricsSuppression(
+                                lastX, lastY, lastTime,
+                            )) {
+                            emitScrollMetrics(
+                                view,
+                                id,
+                                handler,
+                                0f,
+                                0f,
+                                lastTime,
+                            )
+                        }
                     }
                 }
                 view.setOnScrollChangeListener(scrollListener)
@@ -2195,19 +2231,41 @@ internal class Renderer(
                         lastX = view.scrollX
                         lastY = view.scrollY
                         lastTime = SystemClock.uptimeMillis()
-                        emitScrollMetrics(
-                            view,
-                            id,
-                            handler,
-                            0f,
-                            0f,
-                            lastTime,
-                        )
+                        if (!view.consumeSeekRevealMetricsSuppression(
+                                lastX, lastY, lastTime,
+                            )) {
+                            emitScrollMetrics(
+                                view,
+                                id,
+                                handler,
+                                0f,
+                                0f,
+                                lastTime,
+                            )
+                        }
                     }
                 }
                 detach = {
                     view.setOnScrollChangeListener(null)
                     view.removeOnLayoutChangeListener(layoutListener)
+                }
+            }
+            "scroll_seek" -> if (view is VyneScrollContainer) {
+                view.setVirtualScrollSeekListener { targetX, targetY, final, eventTime ->
+                    if (!applyingCommit) {
+                        val density = view.resources.displayMetrics.density
+                        emit(
+                            id,
+                            "scroll_seek",
+                            handler,
+                            linkedMapOf(
+                                "target_offset_x" to pixelsToDp(targetX.toFloat(), density),
+                                "target_offset_y" to pixelsToDp(targetY.toFloat(), density),
+                                "final" to final,
+                                "event_time" to eventTime,
+                            ),
+                        )
+                    }
                 }
             }
             in POINTER_EVENTS -> {
@@ -2275,6 +2333,18 @@ internal class Renderer(
         val viewportHeight =
             (view.height - view.paddingTop - view.paddingBottom).coerceAtLeast(0)
         val projection = (view as? VyneScrollContainer)?.virtualListProjection
+        val contentWidth = (content?.width ?: 0).toFloat()
+        val contentHeight = (content?.height ?: 0).toFloat()
+        val projectedX = InteractiveScrollbarMath.clampProjectedOffset(
+            (projection?.first ?: view.scrollX).toFloat(),
+            viewportWidth.toFloat(),
+            contentWidth,
+        )
+        val projectedY = InteractiveScrollbarMath.clampProjectedOffset(
+            (projection?.second ?: view.scrollY).toFloat(),
+            viewportHeight.toFloat(),
+            contentHeight,
+        )
         emit(
             id,
             "scroll_metrics",
@@ -2284,18 +2354,12 @@ internal class Renderer(
                 "offset_y" to pixelsToDp(view.scrollY.coerceAtLeast(0).toFloat(), density),
                 "viewport_width" to pixelsToDp(viewportWidth.toFloat(), density),
                 "viewport_height" to pixelsToDp(viewportHeight.toFloat(), density),
-                "content_width" to pixelsToDp((content?.width ?: 0).toFloat(), density),
-                "content_height" to pixelsToDp((content?.height ?: 0).toFloat(), density),
+                "content_width" to pixelsToDp(contentWidth, density),
+                "content_height" to pixelsToDp(contentHeight, density),
                 "velocity_x" to velocityX,
                 "velocity_y" to velocityY,
-                "projected_offset_x" to pixelsToDp(
-                    (projection?.first ?: view.scrollX).coerceAtLeast(0).toFloat(),
-                    density,
-                ),
-                "projected_offset_y" to pixelsToDp(
-                    (projection?.second ?: view.scrollY).coerceAtLeast(0).toFloat(),
-                    density,
-                ),
+                "projected_offset_x" to pixelsToDp(projectedX, density),
+                "projected_offset_y" to pixelsToDp(projectedY, density),
                 "event_time" to eventTime,
             ),
         )
@@ -2318,6 +2382,8 @@ internal class Renderer(
                 stateFor(id).accessibilityProgressHandler = null
                 updateAccessibility(id, view)
             }
+            "scroll_seek" ->
+                (view as? VyneScrollContainer)?.setVirtualScrollSeekListener(null)
             in POINTER_EVENTS -> {
                 stateFor(id).pointerHandlers.remove(event)
                 updatePointerListener(id, view)

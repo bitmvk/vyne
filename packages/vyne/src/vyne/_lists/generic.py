@@ -3,7 +3,7 @@
 This module implements the ``VirtualList`` engine behind the public
 ``vyne.lists`` surface.  It composes positioned realized cells with ordinary
 Vyne primitives — a ``Scroll`` (or ``_horizontal_scroll``) hosting a ``Box``
-FrameLayout whose children are keyed, sized, and translated cell wrappers —
+canonical Box whose children are keyed, sized, and translated cell wrappers —
 and reuses the existing Runtime seams exactly like the fixed engine: staged
 imperative bindings, native effects, one-in-flight commits, rollback, reset,
 and acknowledgements.
@@ -83,7 +83,7 @@ _MEASUREMENT_CACHE_LIMIT = 4096
 
 # Reserved scroll props owned by the list controller.
 _RESERVED_SCROLL_PROPS = frozenset(
-    {"on_scroll_metrics", "ref", "_virtual_list_initial_offset"}
+    {"on_scroll_metrics", "on_scroll_seek", "ref", "_virtual_list_initial_offset"}
 )
 
 
@@ -405,9 +405,7 @@ class GenericVirtualListController:
             target_main_start=target_main_start,
             target_main_end=target_main_end,
             target_source=(
-                _source_identity(binding.source)
-                if target_index is not None
-                else None
+                _source_identity(binding.source) if target_index is not None else None
             ),
             anchor_index=None,
             anchor_offset=None,
@@ -841,6 +839,17 @@ def render_generic_virtual_list(spec: VirtualListSpec) -> Element:
 
         return latest(handler)
 
+    def observe_seek(event: Any) -> None:
+        render_spec.controller.scroll_to_offset(
+            _axis_seek_offset(event, axis),
+            animated=False,
+        )
+
+    seek_handler = (
+        latest(observe_seek)
+        if render_spec.scroll_props.get("interactive_scrollbar") is True
+        else None
+    )
     return compose_generic_window(
         render_spec,
         keyed_placements,
@@ -848,6 +857,7 @@ def render_generic_virtual_list(spec: VirtualListSpec) -> Element:
         content_height=result.content_height,
         initial_offset=_main_offset(planning, axis),
         on_scroll_metrics=latest(observe_scroll),
+        on_scroll_seek=seek_handler,
         on_layout_metrics=measurement_listener,
     )
 
@@ -860,9 +870,10 @@ def compose_generic_window(
     content_height: float,
     initial_offset: float,
     on_scroll_metrics: Callable[..., Any],
+    on_scroll_seek: Callable[..., Any] | None = None,
     on_layout_metrics: Callable[[Any], Any],
 ) -> Element:
-    """Compose positioned cell wrappers inside a FrameLayout content Box.
+    """Compose positioned cell wrappers inside a canonical content Box.
 
     The cross-axis dimension falls back to ``match_parent`` only when it is
     still unknown (zero, because no native metrics arrived yet); the main-axis
@@ -946,33 +957,22 @@ def compose_generic_window(
     # whenever its boundary interval intersects the realization viewport, so
     # a future active sticky is composed (and re-emits the marker) in the
     # same commit that first needs it.
-    if any(
-        placement.sticky is not None for placement, _key in keyed_placements
-    ):
+    if any(placement.sticky is not None for placement, _key in keyed_placements):
         content_props["_virtual_content"] = True
-    # Inert extent sentinel: a plain Box sized to the full declared content
-    # extent, composed as the FIRST child.  ScrollView measures its content
-    # with an UNSPECIFIED main-axis spec, under which a FrameLayout ignores
-    # its own LayoutParams height and collapses to its children — so the
-    # declared content height alone would give the host no scroll range.
-    # The sentinel is measured to the declared extent and gives the host a
-    # real scroll range.  It has no listeners, background, clickability, or
-    # accessibility description, and later children (the realized cells) are
-    # drawn and dispatched above it.  The native sticky traversal visits it
-    # as a constant non-sticky cell (+1) and restores it to natural.
-    extent_sentinel = Box(
-        key=("__vyne_virtual_extent__",),
-        width=content_props["width"],
-        height=content_props["height"],
-    )
+    # Publish semantic content size independently of platform measurement.
+    # Each host enforces it with its native content-size mechanism. No platform
+    # workaround appears as a fake child in the Python element tree.
+    content_props["_virtual_content_width"] = content_width
+    content_props["_virtual_content_height"] = content_height
     content = Box(
-        extent_sentinel,
         *children,
         key=("__vyne_virtual_content__",),
         **content_props,
     )
     props = dict(spec.scroll_props.items())
     props["on_scroll_metrics"] = on_scroll_metrics
+    if on_scroll_seek is not None:
+        props["on_scroll_seek"] = on_scroll_seek
     props["_virtual_list_initial_offset"] = initial_offset
     scroll_factory = Scroll if vertical else _horizontal_scroll
     return scroll_factory(
@@ -985,6 +985,23 @@ def compose_generic_window(
 # ---------------------------------------------------------------------------
 # viewport helpers
 # ---------------------------------------------------------------------------
+
+
+def _axis_seek_offset(
+    event: Any,
+    axis: Literal["vertical", "horizontal"],
+) -> float:
+    getter = getattr(event, "get", None)
+    if getter is None:
+        raise TypeError("scroll_seek event must provide get(name)")
+    suffix = "y" if axis == "vertical" else "x"
+    value = getter(f"target_offset_{suffix}")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError("scroll_seek target offset must be a number")
+    offset = float(value)
+    if not math.isfinite(offset) or offset < 0:
+        raise ValueError("scroll_seek target offset must be finite and non-negative")
+    return offset
 
 
 def _rect_from_main(

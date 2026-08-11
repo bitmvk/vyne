@@ -335,6 +335,7 @@ class FixedVirtualListSpec:
             raise TypeError("scroll_props must be a mapping")
         reserved = {
             "on_scroll_metrics",
+            "on_scroll_seek",
             "ref",
             "_virtual_list_initial_offset",
         }.intersection(self.scroll_props)
@@ -458,11 +459,23 @@ def render_fixed_virtual_list(spec: FixedVirtualListSpec) -> Element:
         if next_state != window_state.value:
             window_state.set(next_state)
 
+    def observe_seek(event: Any) -> None:
+        render_spec.controller.scroll_to_offset(
+            _axis_seek_offset(event, render_spec.axis),
+            animated=False,
+        )
+
+    seek_handler = (
+        latest(observe_seek)
+        if render_spec.scroll_props.get("interactive_scrollbar") is True
+        else None
+    )
     return compose_fixed_window(
         render_spec,
         current_mask,
         initial_offset=desired_offset,
         on_scroll_metrics=latest(observe_scroll),
+        on_scroll_seek=seek_handler,
     )
 
 
@@ -472,6 +485,7 @@ def compose_fixed_window(
     *,
     initial_offset: float = 0.0,
     on_scroll_metrics: Callable[..., Any],
+    on_scroll_seek: Callable[..., Any] | None = None,
 ) -> Element:
     """Compose spacers and realized cells for an already selected mask."""
     layout = FixedExtentLayout(spec.source.item_count, spec.item_extent)
@@ -533,6 +547,8 @@ def compose_fixed_window(
 
     props = dict(spec.scroll_props.items())
     props["on_scroll_metrics"] = on_scroll_metrics
+    if on_scroll_seek is not None:
+        props["on_scroll_seek"] = on_scroll_seek
     props["_virtual_list_initial_offset"] = initial_offset
     content_factory = Column if spec.axis == "vertical" else Row
     scroll_factory = Scroll if spec.axis == "vertical" else _horizontal_scroll
@@ -608,10 +624,7 @@ def _binding_viewports(
     candidate viewports from an in-flight or rejected commit.  Falls back
     to the declared pre-metrics viewport when the binding carries none.
     """
-    if (
-        binding.actual_viewport is not None
-        and binding.planning_viewport is not None
-    ):
+    if binding.actual_viewport is not None and binding.planning_viewport is not None:
         return binding.actual_viewport, binding.planning_viewport
     extent = binding.estimated_viewport_extent
     if extent is None or extent <= 0:
@@ -670,6 +683,23 @@ def _axis_viewport(
         offset=getter(f"offset_{suffix}"),
         extent=getter(extent_name),
     )
+
+
+def _axis_seek_offset(
+    event: Any,
+    axis: Literal["vertical", "horizontal"],
+) -> float:
+    getter = getattr(event, "get", None)
+    if getter is None:
+        raise TypeError("scroll_seek event must provide get(name)")
+    suffix = "y" if axis == "vertical" else "x"
+    value = getter(f"target_offset_{suffix}")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError("scroll_seek target offset must be a number")
+    offset = float(value)
+    if not math.isfinite(offset) or offset < 0:
+        raise ValueError("scroll_seek target offset must be finite and non-negative")
+    return offset
 
 
 def _projected_axis_viewport(

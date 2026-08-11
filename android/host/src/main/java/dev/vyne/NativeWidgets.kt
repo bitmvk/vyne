@@ -32,13 +32,13 @@ import kotlin.math.roundToInt
  */
 internal fun defaultRegistry(context: Context): ElementRegistry =
     ElementRegistry().apply {
-        registerNativeWidgets(context, this)
+        registerNativeWidgets(this)
         registerAppExtensions(context, this)
         freeze()
     }
 
 @SuppressLint("DiscouragedApi") // User drawable names are runtime data, not host R symbols.
-internal fun registerNativeWidgets(context: Context, registry: ElementRegistry) {
+internal fun registerNativeWidgets(registry: ElementRegistry) {
     // Box → FrameLayout that supports rounded corners via dispatchDraw.
     registry.register(ElementSpec(
         kind = "Box",

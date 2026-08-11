@@ -36,7 +36,7 @@ def Items():
 
 `VirtualList` is the generic virtualized-list engine (M2). It composes only
 the cells a custom `VirtualLayout` places and the framework selects,
-positioned inside a FrameLayout content Box by `translation_x`/`y`, and it
+positioned inside a canonical content `Box` by `translation_x`/`y`, and it
 drives the same window policy, measurement feedback, and transactional scroll
 commands as `List`. One `ListController` drives both components.
 
@@ -61,7 +61,7 @@ def Grid():
 
 Arguments match `List` (`data`, `render_item`, `key_for_item`, `axis`,
 `overscan`, `max_render_ahead_viewports`, `initial_item_count`, `controller`,
-`key`, `scroll_props`) with two additions:
+`key`, `interactive_scrollbar`, `scroll_props`) with two additions:
 
 - `layout` (required): a `VirtualLayout` strategy — `FixedLinearLayout` for
   fixed extent, or a custom layout that consumes a `LayoutRequest` and
@@ -133,6 +133,7 @@ default:
 | `initial_item_count` | `5` | cells to render before native metrics arrive, used only when no numeric main-axis size is declared. |
 | `controller` | owned internally | `ListController` for both `List` and `VirtualList`. One controller drives one mounted list; pass `key=` when sibling lists can reorder. |
 | `key` | `None` | list identity for sibling reorder. |
+| `interactive_scrollbar` | `True` | always-visible host-native indicator when scrollable; drag the thumb or tap its track. Pass `False` to use the host's ordinary passive scrollbar. Plain `Scroll` containers default this prop to `False`. |
 | `**scroll_props` | — | scroll-view props: `height`, `width`, `background_color`, margins, padding, `content_description`, ... |
 
 ## Dynamic data
@@ -176,15 +177,31 @@ numeric main-axis size.
 
 ## Behavior notes
 
-- The native host never clamps scrolling. A fast fling may briefly show
-  spacer content until Python publishes the window, but the projected path is
-  pre-rendered, and view recycling keeps the mount cheap.
+- The native host clamps actual and projected offsets to its current content
+  range. A fast fling may briefly show spacer content until Python publishes
+  the window, but the projected path is pre-rendered and view recycling keeps
+  the mount cheap.
 - Cell views (`Box`, `Layout`, `Text`) are recycled by the host: removed
   cells return to a pool and new cells reuse the exact view instances, with
   stale props reset only when the new cell does not set them.
 - A numeric main-axis `height` or `width` lets the first render cover the
   viewport before native metrics arrive; otherwise `initial_item_count`
   covers it and offset jumps wait for native metrics.
+- `interactive_scrollbar=True` uses a generic native scroll-host tool: a 7
+  logical-unit thumb, a 32-unit edge touch target, and a minimum 40-unit thumb.
+  A plain `Scroll` moves directly because all of its content exists. A virtual
+  list instead uses transactional seek: the thumb follows every pointer frame,
+  but content stays at the accepted window until Python publishes destination
+  cells and the existing accepted `scroll_to` effect reveals them. Internal
+  seek crossings are throttled to 32 ms, use latest delivery, and never queue
+  more stale positions than the Runtime already permits. Final release bypasses
+  throttling and has two bounded 750 ms retries after rejection or loss. The
+  initiating pointer owns the drag; extra fingers do not steal the thumb.
+- Android positioned-content extents are limited by the platform's 24-bit
+  measured-size field (`View.MEASURED_SIZE_MASK`, in device pixels). The host
+  rejects a larger semantic extent instead of silently truncating it. This is
+  density-dependent and does not define a Python or future-iOS logical limit;
+  larger Android ranges need segmented/rebased native scrolling.
 
 ## Current scope
 
@@ -215,7 +232,7 @@ Generic wrappers use the host's ordinary kind-based view pool: removed Box
 and cell-content views are reset and reused without a list-specific recycler.
 Sticky limitations: RTL horizontal start/end mapping is unsupported (LTR
 increasing x only) and sticky movement is Android-only for now. The generic
-content Box carries an inert extent sentinel first child so the host gets a
-real scroll range (FrameLayout ignores its LayoutParams height under
-ScrollView's UNSPECIFIED measurement); see the M3 section of
-`list-building-blocks.md`.
+content Box publishes private semantic `_virtual_content_width`/`height`
+values instead of a fake child. Android enforces them during measurement; a
+future iOS host maps the same contract to its native content-size mechanism.
+See the host contract section of `list-building-blocks.md`.

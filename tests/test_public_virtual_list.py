@@ -81,6 +81,36 @@ def _emit_metrics(runtime: Runtime, *, axis: str, offset: float) -> None:
     )
 
 
+def _emit_seek(
+    runtime: Runtime,
+    *,
+    axis: str,
+    offset: float,
+    sequence: int,
+    final: bool = False,
+) -> None:
+    node = next(
+        node
+        for node in runtime._coordinator.accepted_index.values()
+        if "scroll_seek" in node.listeners
+    )
+    runtime.dispatch_event(
+        {
+            "type": "event",
+            "seq": sequence,
+            "target": node.id,
+            "event": "scroll_seek",
+            "handler": node.listeners["scroll_seek"],
+            "payload": {
+                "target_offset_x": offset if axis == "horizontal" else 0.0,
+                "target_offset_y": offset if axis == "vertical" else 0.0,
+                "final": final,
+                "event_time": sequence,
+            },
+        }
+    )
+
+
 def _emit_projected_scroll(
     runtime: Runtime,
     *,
@@ -1350,9 +1380,158 @@ def test_unmounted_controller_raises() -> None:
         controller.scroll_to_key(5, alignment="start", animated=False)
 
 
-def test_list_stays_on_fixed_path_without_generic_sentinel() -> None:
-    """List keeps the fixed planner: no generic extent sentinel or FrameLayout
-    content Box in its tree, and it mounts through the fixed engine."""
+def test_list_and_virtual_list_enable_interactive_scrollbar_by_default() -> None:
+    from vyne.lists import FixedLinearLayout, VirtualList
+
+    fixed_transport = MemoryTransport()
+    fixed = Runtime(lambda: _list(), transport=fixed_transport)
+    fixed.mount()
+    fixed_scroll = next(
+        node
+        for node in fixed._coordinator.accepted_index.values()
+        if node.kind == "Scroll"
+    )
+    assert fixed_scroll.props["interactive_scrollbar"] is True
+    assert "scroll_seek" in fixed_scroll.listeners
+    assert any(
+        operation.get("op") == "listen_latest"
+        and operation.get("event") == "scroll_seek"
+        for message in fixed_transport.messages
+        for operation in message.get("ops", ())
+    )
+
+    generic_transport = MemoryTransport()
+    generic = Runtime(
+        lambda: VirtualList(
+            tuple(range(100)),
+            render_item=lambda item, index: Text(text=str(item)),
+            layout=FixedLinearLayout(10),
+            width=300,
+            height=100,
+        ),
+        transport=generic_transport,
+    )
+    generic.mount()
+    generic_scroll = next(
+        node
+        for node in generic._coordinator.accepted_index.values()
+        if node.kind == "Scroll"
+    )
+    assert generic_scroll.props["interactive_scrollbar"] is True
+    assert "scroll_seek" in generic_scroll.listeners
+    assert any(
+        operation.get("op") == "listen_latest"
+        and operation.get("event") == "scroll_seek"
+        for message in generic_transport.messages
+        for operation in message.get("ops", ())
+    )
+
+
+def test_list_interactive_scrollbar_is_eagerly_typed_and_can_be_disabled() -> None:
+    def create(**props):
+        return List(
+            tuple(range(100)),
+            render_item=lambda item, index: Text(text=str(item)),
+            item_extent=10,
+            width=300,
+            height=100,
+            **props,
+        )
+
+    with pytest.raises(TypeError, match="interactive_scrollbar must be a boolean"):
+        create(interactive_scrollbar=1)
+    runtime = Runtime(
+        lambda: create(interactive_scrollbar=False),
+        transport=MemoryTransport(),
+    )
+    runtime.mount()
+    scroll = next(
+        node
+        for node in runtime._coordinator.accepted_index.values()
+        if node.kind == "Scroll"
+    )
+    assert scroll.props["interactive_scrollbar"] is False
+    assert "scroll_seek" not in scroll.listeners
+
+    with pytest.raises(ValueError, match="controller owns on_scroll_seek"):
+        create(on_scroll_seek=lambda event: None)
+
+
+def test_fixed_100k_seek_is_transactional_bounded_and_rejection_safe() -> None:
+    transport = SilentTransport()
+    runtime = Runtime(
+        lambda: _list(data=range(100_000)),
+        transport=transport,
+    )
+    runtime.mount()
+    runtime.acknowledge_native_apply(runtime.revision)
+    accepted_before = runtime._coordinator.accepted_root
+
+    _emit_seek(runtime, axis="vertical", offset=900_000, sequence=1)
+    first_revision = runtime.revision
+    first_commit = transport.messages[-1]
+    assert runtime._coordinator.accepted_root is accepted_before
+    scroll_ops = [op for op in first_commit["ops"] if op.get("op") == "scroll_to"]
+    assert len(scroll_ops) == 1
+    assert scroll_ops[0]["offset_y"] == 900_000
+    text_creates = [
+        op
+        for op in first_commit["ops"]
+        if op.get("op") == "create" and op.get("kind") == "Text"
+    ]
+    assert len(text_creates) <= 40
+
+    runtime.report_native_failure(revision=first_revision, unknown=False)
+    assert runtime._coordinator.accepted_root is accepted_before
+    assert "public-item-90000" not in _texts(runtime)
+
+    _emit_seek(runtime, axis="vertical", offset=999_900, sequence=2, final=True)
+    second_revision = runtime.revision
+    second_commit = transport.messages[-1]
+    assert second_revision > first_revision
+    assert len([op for op in second_commit["ops"] if op.get("op") == "scroll_to"]) == 1
+    runtime.acknowledge_native_apply(second_revision)
+    assert "public-item-99999" in _texts(runtime)
+
+
+def test_generic_100k_seek_keeps_strict_destination_budget() -> None:
+    from vyne.lists import FixedLinearLayout, VirtualList
+
+    transport = SilentTransport()
+    runtime = Runtime(
+        lambda: VirtualList(
+            range(100_000),
+            render_item=lambda item, index: Text(
+                text=str(item),
+                content_description=f"generic-seek-{item}",
+            ),
+            layout=FixedLinearLayout(10),
+            max_offscreen_items=8,
+            width=300,
+            height=100,
+        ),
+        transport=transport,
+    )
+    runtime.mount()
+    runtime.acknowledge_native_apply(runtime.revision)
+    accepted_before = runtime._coordinator.accepted_root
+
+    _emit_seek(runtime, axis="vertical", offset=999_900, sequence=1, final=True)
+    candidate = transport.messages[-1]
+    assert runtime._coordinator.accepted_root is accepted_before
+    assert len([op for op in candidate["ops"] if op.get("op") == "scroll_to"]) == 1
+    text_creates = [
+        op
+        for op in candidate["ops"]
+        if op.get("op") == "create" and op.get("kind") == "Text"
+    ]
+    assert len(text_creates) <= 20
+    runtime.acknowledge_native_apply(runtime.revision)
+    assert "generic-seek-99999" in _texts(runtime)
+
+
+def test_list_stays_on_fixed_path_without_generic_content_box() -> None:
+    """List keeps the fixed planner and has no generic positioned content Box."""
     controller = ListController()
     runtime = Runtime(
         lambda: _list(controller=controller),

@@ -3,6 +3,7 @@ package dev.vyne
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Path
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -67,6 +68,10 @@ internal interface RoundedView {
  */
 internal interface VyneScrollContainer {
     val virtualListProjection: Pair<Int, Int>
+    var interactiveScrollbarEnabled: Boolean
+    fun setVirtualScrollSeekListener(listener: VirtualScrollSeekListener?)
+    fun clearVirtualScrollSeekState()
+    fun consumeSeekRevealMetricsSuppression(x: Int, y: Int, now: Long): Boolean
     fun setVirtualListInitialOffset(offset: Int)
     fun scrollToPosition(x: Int, y: Int)
     fun smoothScrollToPosition(x: Int, y: Int)
@@ -180,6 +185,14 @@ internal class RoundedFrameLayout(context: Context) :
     override val clipPath = Path()
     override var cornerRadii: Renderer.CornerRadii? = null
     override var clipsChildrenToBounds: Boolean = true
+
+    // Platform-neutral positioned-content extent (raw px). A ScrollView may
+    // measure its child with an UNSPECIFIED main axis; enforce Python's
+    // semantic extent without exposing an Android sentinel in the tree.
+    var virtualContentWidthPx: Int = 0
+        internal set
+    var virtualContentHeightPx: Int = 0
+        internal set
 
     // Virtual-list sticky state (raw px).  Ordinary Boxes keep defaults and
     // are never touched: the marker gates the native traversal, and sticky
@@ -298,7 +311,11 @@ internal class RoundedFrameLayout(context: Context) :
     }
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        val (w, h) = constrainMeasured(measuredWidth, measuredHeight)
+        val semanticWidth = maxOf(measuredWidth, virtualContentWidthPx)
+        val semanticHeight = maxOf(measuredHeight, virtualContentHeightPx)
+        val resolvedWidth = View.resolveSize(semanticWidth, widthMeasureSpec)
+        val resolvedHeight = View.resolveSize(semanticHeight, heightMeasureSpec)
+        val (w, h) = constrainMeasured(resolvedWidth, resolvedHeight)
         setMeasuredDimension(w, h)
     }
 
@@ -362,6 +379,12 @@ internal class RoundedScrollView(context: Context) :
     ScrollView(context), RoundedView, MaxConstrainedView, VyneScrollContainer {
 
     private val projection = VirtualListProjection(context)
+    private val interactiveScrollbar = InteractiveScrollbar(
+        context.resources.displayMetrics.density,
+        vertical = true,
+    )
+    private val virtualSeek = VirtualScrollSeekHostState(vertical = true)
+    private val virtualSeekWatchdog = Runnable { runVirtualSeekWatchdog() }
     private var pendingInitialOffset: Int? = null
     private var pendingScroll: PendingScroll? = null
 
@@ -374,12 +397,61 @@ internal class RoundedScrollView(context: Context) :
     override val virtualListProjection: Pair<Int, Int>
         get() = projection.offsetX to projection.offsetY
 
+    override var interactiveScrollbarEnabled: Boolean
+        get() = interactiveScrollbar.enabled
+        set(value) {
+            // Candidate prop removal can still roll back. Renderer clears
+            // seek state only after accepted disable/removal.
+            if (!value) finishInteractiveScrollbarDrag(resetSeek = false)
+            interactiveScrollbar.setEnabled(value)
+            isVerticalScrollBarEnabled = !value
+            invalidate()
+        }
+
+    override fun setVirtualScrollSeekListener(listener: VirtualScrollSeekListener?) {
+        // Candidate listener mutation can still roll back. Preserve state
+        // until Renderer confirms accepted removal.
+        virtualSeek.setListener(listener)
+        invalidate()
+    }
+
+    override fun clearVirtualScrollSeekState() {
+        removeCallbacks(virtualSeekWatchdog)
+        virtualSeek.reset()
+        invalidate()
+    }
+
+    override fun consumeSeekRevealMetricsSuppression(
+        x: Int,
+        y: Int,
+        now: Long,
+    ): Boolean = virtualSeek.consumeMetricsSuppression(x, y, now)
+
+    internal val interactiveScrollbarDraggingForTest: Boolean
+        get() = interactiveScrollbar.dragging
+    internal val interactiveScrollbarDisplayOffsetForTest: Int
+        get() = virtualSeek.displayOffset(scrollY)
+
     override fun dispatchDraw(canvas: Canvas) {
         val checkpoint = applyChildClip(
             canvas, this, cornerRadii, clipPath, clipsChildrenToBounds
         )
         super.dispatchDraw(canvas)
         restoreChildClip(canvas, checkpoint)
+        val maxY = maxScrollY()
+        val viewportY = (height - paddingTop - paddingBottom).coerceAtLeast(0)
+        interactiveScrollbar.draw(
+            canvas,
+            viewportOriginX = scrollX.toFloat(),
+            viewportOriginY = scrollY.toFloat(),
+            width = width,
+            height = height,
+            paddingStart = paddingTop,
+            paddingEnd = paddingBottom,
+            viewportExtent = viewportY,
+            scrollOffset = virtualSeek.displayOffset(scrollY),
+            maxScroll = maxY,
+        )
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -399,8 +471,12 @@ internal class RoundedScrollView(context: Context) :
             val boundedX = pending.x.coerceIn(0, maxX)
             val boundedY = pending.y.coerceIn(0, maxY)
             pendingScroll = null
-            if (pending.animated) super.smoothScrollTo(boundedX, boundedY)
-            else super.scrollTo(boundedX, boundedY)
+            if (pending.animated) {
+                super.smoothScrollTo(boundedX, boundedY)
+            } else {
+                prepareSeekReveal(boundedX, boundedY)
+                super.scrollTo(boundedX, boundedY)
+            }
         }
         // Cells may have moved, entered, or left; refresh stickies with the
         // current viewport (no bridge event, no Python commit).
@@ -412,23 +488,50 @@ internal class RoundedScrollView(context: Context) :
         updateVirtualSticky(this)
     }
 
-    private fun scrollBounds(): Pair<Int, Int> {
+    private fun maxScrollY(): Int {
         val content = getChildAt(0)
         val viewportY =
             (height - paddingTop - paddingBottom).coerceAtLeast(0)
-        val maxY = ((content?.height ?: 0) - viewportY).coerceAtLeast(0)
-        return 0 to maxY
+        return ((content?.height ?: 0) - viewportY).coerceAtLeast(0)
     }
+
+    private fun scrollBounds(): Pair<Int, Int> = 0 to maxScrollY()
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (beginInteractiveScrollbarDrag(event)) {
+                super.fling(0)
+                projection.endGesture()
+                parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
             super.fling(0)
             projection.beginGesture(this)
         }
+        if (interactiveScrollbar.dragging) return true
         return super.onInterceptTouchEvent(event)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (interactiveScrollbar.dragging) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                    updateInteractiveScrollbarDrag(event, final = false)
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (interactiveScrollbar.activePointerIsGoingUp(event)) {
+                        updateInteractiveScrollbarDrag(event, final = true)
+                        finishInteractiveScrollbarDrag()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    updateInteractiveScrollbarDrag(event, final = true)
+                    finishInteractiveScrollbarDrag()
+                }
+                MotionEvent.ACTION_CANCEL ->
+                    finishInteractiveScrollbarDrag(resetSeek = true)
+            }
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 super.fling(0)
@@ -438,6 +541,89 @@ internal class RoundedScrollView(context: Context) :
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> projection.endGesture()
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun beginInteractiveScrollbarDrag(event: MotionEvent): Boolean {
+        val maxY = maxScrollY()
+        val viewportY = (height - paddingTop - paddingBottom).coerceAtLeast(0)
+        val started = interactiveScrollbar.tryStartDrag(
+            event,
+            mainExtent = height,
+            crossExtent = width,
+            paddingStart = paddingTop,
+            paddingEnd = paddingBottom,
+            viewportExtent = viewportY,
+            scrollOffset = scrollY,
+            maxScroll = maxY,
+        )
+        if (started && virtualSeek.enabled) {
+            removeCallbacks(virtualSeekWatchdog)
+            virtualSeek.beginGesture()
+        }
+        return started
+    }
+
+    private fun updateInteractiveScrollbarDrag(event: MotionEvent, final: Boolean) {
+        val maxY = maxScrollY()
+        val viewportY = (height - paddingTop - paddingBottom).coerceAtLeast(0)
+        val target = interactiveScrollbar.targetForDrag(
+            event,
+            mainExtent = height,
+            paddingStart = paddingTop,
+            paddingEnd = paddingBottom,
+            viewportExtent = viewportY,
+            scrollOffset = virtualSeek.displayOffset(scrollY),
+            maxScroll = maxY,
+        )
+        if (target == null) {
+            if (!interactiveScrollbar.dragging) {
+                // Active pointer disappeared without a normal up/cancel.
+                finishInteractiveScrollbarDrag(resetSeek = true)
+            }
+            return
+        }
+        if (virtualSeek.enabled) {
+            virtualSeek.update(target, event.eventTime, final)
+            if (final) scheduleVirtualSeekWatchdog()
+            invalidate()
+            return
+        }
+        pendingScroll = null
+        projection.target(0, target)
+        super.scrollTo(0, target)
+        invalidate()
+    }
+
+    private fun scheduleVirtualSeekWatchdog() {
+        removeCallbacks(virtualSeekWatchdog)
+        if (virtualSeek.finalPending) {
+            postDelayed(virtualSeekWatchdog, VIRTUAL_SCROLL_SEEK_WATCHDOG_MS)
+        }
+    }
+
+    private fun runVirtualSeekWatchdog() {
+        if (!virtualSeek.enabled) return
+        virtualSeek.retry(scrollY, SystemClock.uptimeMillis())
+        invalidate()
+        scheduleVirtualSeekWatchdog()
+    }
+
+    private fun prepareSeekReveal(x: Int, y: Int) {
+        // Accept even when rounding leaves the host at its current pixel; the
+        // final watchdog must not retry an already satisfied target.
+        if (virtualSeek.acceptReveal(x, y, SystemClock.uptimeMillis())) {
+            if (!virtualSeek.finalPending) removeCallbacks(virtualSeekWatchdog)
+        }
+    }
+
+    private fun finishInteractiveScrollbarDrag(resetSeek: Boolean = false) {
+        interactiveScrollbar.finishDrag()
+        parent?.requestDisallowInterceptTouchEvent(false)
+        if (resetSeek) {
+            removeCallbacks(virtualSeekWatchdog)
+            virtualSeek.reset()
+            invalidate()
+        }
     }
 
     override fun fling(velocityY: Int) {
@@ -473,6 +659,7 @@ internal class RoundedScrollView(context: Context) :
             if (animated) {
                 super.smoothScrollTo(x, y)
             } else {
+                prepareSeekReveal(x, y)
                 super.scrollTo(x, y)
             }
         } else {
@@ -484,6 +671,12 @@ internal class RoundedScrollView(context: Context) :
             requestLayout()
         }
     }
+
+    override fun onDetachedFromWindow() {
+        finishInteractiveScrollbarDrag(resetSeek = true)
+        projection.endGesture()
+        super.onDetachedFromWindow()
+    }
 }
 
 // ── RoundedHorizontalScrollView ───────────────────────────────────
@@ -492,6 +685,12 @@ internal class RoundedHorizontalScrollView(context: Context) :
     HorizontalScrollView(context), RoundedView, MaxConstrainedView, VyneScrollContainer {
 
     private val projection = VirtualListProjection(context)
+    private val interactiveScrollbar = InteractiveScrollbar(
+        context.resources.displayMetrics.density,
+        vertical = false,
+    )
+    private val virtualSeek = VirtualScrollSeekHostState(vertical = false)
+    private val virtualSeekWatchdog = Runnable { runVirtualSeekWatchdog() }
     private var pendingInitialOffset: Int? = null
     private var pendingScroll: PendingScroll? = null
 
@@ -504,12 +703,61 @@ internal class RoundedHorizontalScrollView(context: Context) :
     override val virtualListProjection: Pair<Int, Int>
         get() = projection.offsetX to projection.offsetY
 
+    override var interactiveScrollbarEnabled: Boolean
+        get() = interactiveScrollbar.enabled
+        set(value) {
+            // Candidate prop removal can still roll back. Renderer clears
+            // seek state only after accepted disable/removal.
+            if (!value) finishInteractiveScrollbarDrag(resetSeek = false)
+            interactiveScrollbar.setEnabled(value)
+            isHorizontalScrollBarEnabled = !value
+            invalidate()
+        }
+
+    override fun setVirtualScrollSeekListener(listener: VirtualScrollSeekListener?) {
+        // Candidate listener mutation can still roll back. Preserve state
+        // until Renderer confirms accepted removal.
+        virtualSeek.setListener(listener)
+        invalidate()
+    }
+
+    override fun clearVirtualScrollSeekState() {
+        removeCallbacks(virtualSeekWatchdog)
+        virtualSeek.reset()
+        invalidate()
+    }
+
+    override fun consumeSeekRevealMetricsSuppression(
+        x: Int,
+        y: Int,
+        now: Long,
+    ): Boolean = virtualSeek.consumeMetricsSuppression(x, y, now)
+
+    internal val interactiveScrollbarDraggingForTest: Boolean
+        get() = interactiveScrollbar.dragging
+    internal val interactiveScrollbarDisplayOffsetForTest: Int
+        get() = virtualSeek.displayOffset(scrollX)
+
     override fun dispatchDraw(canvas: Canvas) {
         val checkpoint = applyChildClip(
             canvas, this, cornerRadii, clipPath, clipsChildrenToBounds
         )
         super.dispatchDraw(canvas)
         restoreChildClip(canvas, checkpoint)
+        val maxX = maxScrollX()
+        val viewportX = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+        interactiveScrollbar.draw(
+            canvas,
+            viewportOriginX = scrollX.toFloat(),
+            viewportOriginY = scrollY.toFloat(),
+            width = width,
+            height = height,
+            paddingStart = paddingLeft,
+            paddingEnd = paddingRight,
+            viewportExtent = viewportX,
+            scrollOffset = virtualSeek.displayOffset(scrollX),
+            maxScroll = maxX,
+        )
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -529,8 +777,12 @@ internal class RoundedHorizontalScrollView(context: Context) :
             val boundedX = pending.x.coerceIn(0, maxX)
             val boundedY = pending.y.coerceIn(0, maxY)
             pendingScroll = null
-            if (pending.animated) super.smoothScrollTo(boundedX, boundedY)
-            else super.scrollTo(boundedX, boundedY)
+            if (pending.animated) {
+                super.smoothScrollTo(boundedX, boundedY)
+            } else {
+                prepareSeekReveal(boundedX, boundedY)
+                super.scrollTo(boundedX, boundedY)
+            }
         }
         // Cells may have moved, entered, or left; refresh stickies with the
         // current viewport (no bridge event, no Python commit).
@@ -542,23 +794,50 @@ internal class RoundedHorizontalScrollView(context: Context) :
         updateVirtualSticky(this)
     }
 
-    private fun scrollBounds(): Pair<Int, Int> {
+    private fun maxScrollX(): Int {
         val content = getChildAt(0)
         val viewportX =
             (width - paddingLeft - paddingRight).coerceAtLeast(0)
-        val maxX = ((content?.width ?: 0) - viewportX).coerceAtLeast(0)
-        return maxX to 0
+        return ((content?.width ?: 0) - viewportX).coerceAtLeast(0)
     }
+
+    private fun scrollBounds(): Pair<Int, Int> = maxScrollX() to 0
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (beginInteractiveScrollbarDrag(event)) {
+                super.fling(0)
+                projection.endGesture()
+                parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
             super.fling(0)
             projection.beginGesture(this)
         }
+        if (interactiveScrollbar.dragging) return true
         return super.onInterceptTouchEvent(event)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (interactiveScrollbar.dragging) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                    updateInteractiveScrollbarDrag(event, final = false)
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (interactiveScrollbar.activePointerIsGoingUp(event)) {
+                        updateInteractiveScrollbarDrag(event, final = true)
+                        finishInteractiveScrollbarDrag()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    updateInteractiveScrollbarDrag(event, final = true)
+                    finishInteractiveScrollbarDrag()
+                }
+                MotionEvent.ACTION_CANCEL ->
+                    finishInteractiveScrollbarDrag(resetSeek = true)
+            }
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 super.fling(0)
@@ -568,6 +847,89 @@ internal class RoundedHorizontalScrollView(context: Context) :
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> projection.endGesture()
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun beginInteractiveScrollbarDrag(event: MotionEvent): Boolean {
+        val maxX = maxScrollX()
+        val viewportX = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+        val started = interactiveScrollbar.tryStartDrag(
+            event,
+            mainExtent = width,
+            crossExtent = height,
+            paddingStart = paddingLeft,
+            paddingEnd = paddingRight,
+            viewportExtent = viewportX,
+            scrollOffset = scrollX,
+            maxScroll = maxX,
+        )
+        if (started && virtualSeek.enabled) {
+            removeCallbacks(virtualSeekWatchdog)
+            virtualSeek.beginGesture()
+        }
+        return started
+    }
+
+    private fun updateInteractiveScrollbarDrag(event: MotionEvent, final: Boolean) {
+        val maxX = maxScrollX()
+        val viewportX = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+        val target = interactiveScrollbar.targetForDrag(
+            event,
+            mainExtent = width,
+            paddingStart = paddingLeft,
+            paddingEnd = paddingRight,
+            viewportExtent = viewportX,
+            scrollOffset = virtualSeek.displayOffset(scrollX),
+            maxScroll = maxX,
+        )
+        if (target == null) {
+            if (!interactiveScrollbar.dragging) {
+                // Active pointer disappeared without a normal up/cancel.
+                finishInteractiveScrollbarDrag(resetSeek = true)
+            }
+            return
+        }
+        if (virtualSeek.enabled) {
+            virtualSeek.update(target, event.eventTime, final)
+            if (final) scheduleVirtualSeekWatchdog()
+            invalidate()
+            return
+        }
+        pendingScroll = null
+        projection.target(target, 0)
+        super.scrollTo(target, 0)
+        invalidate()
+    }
+
+    private fun scheduleVirtualSeekWatchdog() {
+        removeCallbacks(virtualSeekWatchdog)
+        if (virtualSeek.finalPending) {
+            postDelayed(virtualSeekWatchdog, VIRTUAL_SCROLL_SEEK_WATCHDOG_MS)
+        }
+    }
+
+    private fun runVirtualSeekWatchdog() {
+        if (!virtualSeek.enabled) return
+        virtualSeek.retry(scrollX, SystemClock.uptimeMillis())
+        invalidate()
+        scheduleVirtualSeekWatchdog()
+    }
+
+    private fun prepareSeekReveal(x: Int, y: Int) {
+        // Accept even when rounding leaves the host at its current pixel; the
+        // final watchdog must not retry an already satisfied target.
+        if (virtualSeek.acceptReveal(x, y, SystemClock.uptimeMillis())) {
+            if (!virtualSeek.finalPending) removeCallbacks(virtualSeekWatchdog)
+        }
+    }
+
+    private fun finishInteractiveScrollbarDrag(resetSeek: Boolean = false) {
+        interactiveScrollbar.finishDrag()
+        parent?.requestDisallowInterceptTouchEvent(false)
+        if (resetSeek) {
+            removeCallbacks(virtualSeekWatchdog)
+            virtualSeek.reset()
+            invalidate()
+        }
     }
 
     override fun fling(velocityX: Int) {
@@ -597,11 +959,22 @@ internal class RoundedHorizontalScrollView(context: Context) :
         val boundedX = x.coerceIn(0, maxX)
         if (boundedX == x) {
             pendingScroll = null
-            if (animated) super.smoothScrollTo(x, y) else super.scrollTo(x, y)
+            if (animated) {
+                super.smoothScrollTo(x, y)
+            } else {
+                prepareSeekReveal(x, y)
+                super.scrollTo(x, y)
+            }
         } else {
             // Content not laid out yet; retry after the next layout pass.
             pendingScroll = PendingScroll(x, y, animated)
             requestLayout()
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        finishInteractiveScrollbarDrag(resetSeek = true)
+        projection.endGesture()
+        super.onDetachedFromWindow()
     }
 }

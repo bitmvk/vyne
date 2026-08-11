@@ -442,17 +442,11 @@ class VirtualListEngineTests(unittest.TestCase):
         self.assertEqual(content.props["height"], 10_000.0)
         # The declared cross size is retained as a number.
         self.assertEqual(content.props["width"], 300.0)
+        self.assertEqual(content.props["_virtual_content_width"], 300.0)
+        self.assertEqual(content.props["_virtual_content_height"], 10_000.0)
 
-    def test_content_extent_sentinel_is_first_inert_child(self) -> None:
-        """The generic content Box carries an inert extent sentinel as its
-        first child, sized to the full declared content extent.
-
-        ScrollView measures content with an UNSPECIFIED main-axis spec and a
-        FrameLayout collapses to its children, so the sentinel is what gives
-        the native host a real scroll range.  It must be inert (no listeners,
-        no clickability, no accessibility) and must precede the realized
-        cell wrappers so the cells draw above it.
-        """
+    def test_content_extent_is_semantic_without_sentinel_child(self) -> None:
+        """The content Box publishes host-neutral extent props directly."""
         runtime = Runtime(_fixed_app(), transport=MemoryTransport())
         runtime.mount()
         content = next(
@@ -460,42 +454,21 @@ class VirtualListEngineTests(unittest.TestCase):
             for node in runtime._coordinator.accepted_index.values()
             if node.kind == "Box" and node.key == ("__vyne_virtual_content__",)
         )
-        sentinel = next(
-            node
-            for node in runtime._coordinator.accepted_index.values()
-            if node.kind == "Box" and node.key == ("__vyne_virtual_extent__",)
+        self.assertEqual(content.props["_virtual_content_width"], 300.0)
+        self.assertEqual(content.props["_virtual_content_height"], 10_000.0)
+        self.assertFalse(
+            any(
+                node.key == ("__vyne_virtual_extent__",)
+                for node in runtime._coordinator.accepted_index.values()
+            )
         )
-        self.assertEqual(sentinel.props["width"], 300.0)
-        self.assertEqual(sentinel.props["height"], 10_000.0)
-        # Inert: no event listeners, no clickability, no accessibility text.
-        self.assertEqual(sentinel.listeners, {})
-        self.assertNotIn("clickable", sentinel.props)
-        self.assertNotIn("content_description", sentinel.props)
-        # First direct child of the content Box.
         insert_ops = [
             op
             for op in runtime.latest_commit.get("ops", [])
-            if op.get("op") == "insert_child"
-            and op.get("parent") == content.id
+            if op.get("op") == "insert_child" and op.get("parent") == content.id
         ]
         self.assertTrue(insert_ops)
-        first = min(insert_ops, key=lambda op: op["index"])
-        self.assertEqual(first["child"], sentinel.id)
-        self.assertEqual(first["index"], 0)
-        # Every realized cell wrapper follows the sentinel (index >= 1).
-        cell = next(
-            node
-            for node in runtime._coordinator.accepted_index.values()
-            if node.kind == "Box"
-            and node.key is not None
-            and node.key[0] == "__vyne_virtual_cell__"
-        )
-        cell_op = next(
-            op
-            for op in insert_ops
-            if op.get("child") == cell.id
-        )
-        self.assertGreaterEqual(cell_op["index"], 1)
+        self.assertEqual(min(op["index"] for op in insert_ops), 0)
 
     def test_scroll_moves_window(self) -> None:
         runtime = Runtime(_fixed_app(), transport=MemoryTransport())

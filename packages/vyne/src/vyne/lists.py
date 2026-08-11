@@ -75,7 +75,9 @@ class ListController:
         self._fixed = FixedVirtualListController()
         self._generic = GenericVirtualListController()
 
-    def _bound_engine(self) -> FixedVirtualListController | GenericVirtualListController:
+    def _bound_engine(
+        self,
+    ) -> FixedVirtualListController | GenericVirtualListController:
         """Return the single bound engine; raise if zero or multiple bind."""
         fixed_bound = self._fixed.is_mounted
         generic_bound = self._generic.is_mounted
@@ -290,12 +292,13 @@ def VirtualList(
     initial_item_count: int = 5,
     controller: ListController | None = None,
     key: Any | None = None,
+    interactive_scrollbar: bool = True,
     **scroll_props: Any,
 ) -> Element:
     """Render a generic virtualized list driven by a custom layout.
 
     Only the cells the layout places and the framework selects are composed,
-    positioned inside a FrameLayout content Box by ``translation_x``/``y``.
+    positioned inside a canonical content Box by ``translation_x``/``y``.
     The window follows the viewport, extends ahead of fast flings using the
     native projection (bounded by ``max_render_ahead_viewports``), and keeps
     reorders/resizes stable through item keys.
@@ -331,6 +334,8 @@ def VirtualList(
             only when no numeric main-axis size is declared.
         controller: Optional controller for imperative scrolling.
         key: List identity for sibling reorder.
+        interactive_scrollbar: Enable the always-visible host-native draggable
+            scrollbar when content exceeds the viewport. Default True.
         scroll_props: Scroll-view props (``height``, ``width``,
             ``background_color``, margins, ...).
     """
@@ -378,8 +383,11 @@ def VirtualList(
         raise ValueError("initial_item_count must be non-negative")
     if controller is not None and not isinstance(controller, ListController):
         raise TypeError("controller must be ListController or None")
+    if type(interactive_scrollbar) is not bool:
+        raise TypeError("interactive_scrollbar must be a boolean")
     reserved = {
         "on_scroll_metrics",
+        "on_scroll_seek",
         "ref",
         "_virtual_list_initial_offset",
     }.intersection(scroll_props)
@@ -387,6 +395,7 @@ def VirtualList(
         names = ", ".join(sorted(reserved))
         raise ValueError(f"The virtual-list controller owns {names}")
 
+    scroll_props["interactive_scrollbar"] = interactive_scrollbar
     if key is None:
         component: Callable[..., Element] = _virtual_list_component
     else:
@@ -419,6 +428,7 @@ def List(
     initial_item_count: int = 5,
     controller: ListController | None = None,
     key: Any | None = None,
+    interactive_scrollbar: bool = True,
     **scroll_props: Any,
 ) -> Element:
     """Render a fixed-extent virtualized list.
@@ -453,6 +463,8 @@ def List(
             only when no numeric main-axis size is declared.
         controller: Optional controller for imperative scrolling.
         key: List identity for sibling reorder.
+        interactive_scrollbar: Enable the always-visible host-native draggable
+            scrollbar when content exceeds the viewport. Default True.
         scroll_props: Scroll-view props (``height``, ``width``,
             ``background_color``, margins, ...).
     """
@@ -493,7 +505,19 @@ def List(
         raise ValueError("initial_item_count must be non-negative")
     if controller is not None and not isinstance(controller, ListController):
         raise TypeError("controller must be ListController or None")
+    if type(interactive_scrollbar) is not bool:
+        raise TypeError("interactive_scrollbar must be a boolean")
+    reserved = {
+        "on_scroll_metrics",
+        "on_scroll_seek",
+        "ref",
+        "_virtual_list_initial_offset",
+    }.intersection(scroll_props)
+    if reserved:
+        names = ", ".join(sorted(reserved))
+        raise ValueError(f"The virtual-list controller owns {names}")
 
+    scroll_props["interactive_scrollbar"] = interactive_scrollbar
     if key is None:
         component: Callable[..., Element] = _list_component
     else:
