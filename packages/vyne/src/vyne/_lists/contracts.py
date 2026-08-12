@@ -304,6 +304,13 @@ class VirtualLayout(Protocol):
 
     Implementations may optionally expose ``index_near_offset`` for snapping;
     it is discovered with ``getattr`` and is not part of this protocol.
+
+    Implementations whose ``place`` and ``offset_for_index`` never read
+    ``measurement_for_index`` (fixed-extent layouts) may declare
+    ``uses_measurements = False``; the engine then skips the per-cell
+    layout-metrics listeners entirely, which removes one listener operation
+    per cell per commit and all per-cell measurement event traffic.  The
+    attribute is discovered with ``getattr`` and defaults to True.
     """
 
     def place(self, request: LayoutRequest) -> LayoutResult: ...
@@ -328,6 +335,10 @@ class FixedLinearLayout:
 
     item_extent: float
     axis: Literal["vertical", "horizontal"] = "vertical"
+
+    # Fixed extents: ``place`` and ``offset_for_index`` never read measured
+    # sizes, so the engine can skip per-cell measurement listeners.
+    uses_measurements = False
 
     def __post_init__(self) -> None:
         if isinstance(self.item_extent, bool) or not isinstance(

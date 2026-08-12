@@ -1067,6 +1067,58 @@ class VirtualListLayoutTests(unittest.TestCase):
 
 
 class VirtualListMeasurementTests(unittest.TestCase):
+    def test_fixed_linear_layout_skips_measurement_listeners(self) -> None:
+        # Fixed extents never read measurements, so no per-cell
+        # layout_metrics listener is attached (no listen op, no event
+        # traffic).  An opt-in layout keeps the default behavior.
+        transport = MemoryTransport()
+        runtime = Runtime(
+            lambda: Column(
+                VirtualList(
+                    tuple(range(20)),
+                    render_item=_cell,
+                    layout=FixedLinearLayout(10),
+                    key_for_item=lambda item, index: item,
+                    width=300,
+                    height=100,
+                )
+            ),
+            transport=transport,
+        )
+        runtime.mount()
+        layout_listens = [
+            operation
+            for message in transport.messages
+            for operation in message.get("ops", ())
+            if operation.get("op") in {"listen", "listen_latest"}
+            and operation.get("event") == "layout_metrics"
+        ]
+        self.assertEqual(layout_listens, [])
+
+        opted_transport = MemoryTransport()
+        opted = Runtime(
+            lambda: Column(
+                VirtualList(
+                    tuple(range(20)),
+                    render_item=_cell,
+                    layout=_MeasuredLinearLayout(10, "vertical"),
+                    key_for_item=lambda item, index: item,
+                    width=300,
+                    height=100,
+                )
+            ),
+            transport=opted_transport,
+        )
+        opted.mount()
+        opted_listens = [
+            operation
+            for message in opted_transport.messages
+            for operation in message.get("ops", ())
+            if operation.get("op") in {"listen", "listen_latest"}
+            and operation.get("event") == "layout_metrics"
+        ]
+        self.assertTrue(opted_listens)
+
     def test_identical_measurement_is_noop(self) -> None:
         runtime = Runtime(
             lambda: Column(
@@ -1420,6 +1472,12 @@ class _FixedAnchorLayout:
         return self._anchor_result
 
 
+class _MeasuredLinearLayout(FixedLinearLayout):
+    """FixedLinearLayout that opts back into measurement feedback."""
+
+    uses_measurements = True
+
+
 class VirtualListAnchorValidationTests(unittest.TestCase):
     def _runtime(self, layout, *, controller=None):
         controller = controller or ListController()
@@ -1518,7 +1576,7 @@ class ListControllerFacadeTests(unittest.TestCase):
                         content_description=f"item-{item}",
                         on_click=act,
                     ),
-                    layout=FixedLinearLayout(10, "vertical"),
+                    layout=_MeasuredLinearLayout(10, "vertical"),
                     key_for_item=lambda item, index: item,
                     controller=controller,
                     width=300,

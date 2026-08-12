@@ -859,6 +859,10 @@ def render_generic_virtual_list(spec: VirtualListSpec) -> Element:
         if render_spec.scroll_props.get("interactive_scrollbar") is True
         else None
     )
+    # Layouts that never read measurements (fixed extents) declare
+    # ``uses_measurements = False``: skipping the per-cell listeners removes
+    # one listener op per cell per commit and all measurement event traffic.
+    measure_layout = getattr(layout, "uses_measurements", True)
     return compose_generic_window(
         render_spec,
         keyed_placements,
@@ -867,7 +871,7 @@ def render_generic_virtual_list(spec: VirtualListSpec) -> Element:
         initial_offset=_main_offset(planning, axis),
         on_scroll_metrics=latest(observe_scroll),
         on_scroll_seek=seek_handler,
-        on_layout_metrics=measurement_listener,
+        on_layout_metrics=measurement_listener if measure_layout else None,
     )
 
 
@@ -880,7 +884,7 @@ def compose_generic_window(
     initial_offset: float,
     on_scroll_metrics: Callable[..., Any],
     on_scroll_seek: Callable[..., Any] | None = None,
-    on_layout_metrics: Callable[[Any], Any],
+    on_layout_metrics: Callable[[Any], Any] | None = None,
 ) -> Element:
     """Compose positioned cell wrappers inside a canonical content Box.
 
@@ -921,7 +925,6 @@ def compose_generic_window(
                 "height": placement.height,
                 "translation_x": placement.x,
                 "translation_y": placement.y,
-                "on_layout_metrics": on_layout_metrics(key),
             }
         else:
             cell_props = {
@@ -931,8 +934,9 @@ def compose_generic_window(
                 ),
                 "translation_x": placement.x,
                 "translation_y": placement.y,
-                "on_layout_metrics": on_layout_metrics(key),
             }
+        if on_layout_metrics is not None:
+            cell_props["on_layout_metrics"] = on_layout_metrics(key)
         sticky = placement.sticky
         if sticky is not None:
             # Private native sticky metadata (bounds before edge).  The
