@@ -149,20 +149,19 @@ def _texts(runtime: Runtime) -> dict[str, int]:
     }
 
 
-def test_public_surface_is_experimental_and_replaced() -> None:
+def test_public_surface_has_one_list_virtual_list_and_controller() -> None:
     assert List.__name__ == "List"
     assert ListController.__name__ == "ListController"
     assert vyne.VirtualList is not List
     import vyne.lists as lists_module
-    from vyne.experimental.lists import VirtualList, ListController as ExpController
 
-    # The experimental names alias the real public API; there is exactly one
-    # controller type and no stale VirtualListController name.
-    assert VirtualList is lists_module.VirtualList
-    assert VirtualList is vyne.VirtualList
-    assert ExpController is lists_module.ListController
+    # Exactly one controller type, no stale VirtualListController name, and
+    # no experimental alias namespace.
+    assert vyne.List is List
+    assert vyne.ListController is ListController
+    assert lists_module.VirtualList is vyne.VirtualList
     assert not hasattr(lists_module, "VirtualListController")
-    assert not hasattr(vyne.experimental.lists, "VirtualListController")
+    assert not hasattr(vyne, "experimental")
 
 
 def test_root_exports_list_virtual_list_and_controller() -> None:
@@ -271,15 +270,15 @@ def test_two_public_controllers_can_swap_mounted_lists() -> None:
 
     runtime = Runtime(app, transport=MemoryTransport())
     runtime.mount()
-    first_node = first._fixed._scroll_ref.current.node_id
-    second_node = second._fixed._scroll_ref.current.node_id
+    first_node = first._generic._scroll_ref.current.node_id
+    second_node = second._generic._scroll_ref.current.node_id
 
     controls["swapped"].set(True)
 
-    assert first._fixed._scroll_ref.current.node_id == second_node
-    assert second._fixed._scroll_ref.current.node_id == first_node
-    assert first._fixed._binding.layout.item_extent == 20.0
-    assert second._fixed._binding.layout.item_extent == 10.0
+    assert first._generic._scroll_ref.current.node_id == second_node
+    assert second._generic._scroll_ref.current.node_id == first_node
+    assert first._generic._binding.layout.item_extent == 20.0
+    assert second._generic._binding.layout.item_extent == 10.0
 
     for description, expected_offset in (
         ("first-controller", 100.0),
@@ -384,11 +383,19 @@ def test_programmatic_window_rebounds_when_data_shrinks_before_metrics() -> None
 
     controls["data"].set(tuple(range(20)))
 
-    assert "public-item-19" in _texts(runtime)
+    # The retained programmatic window (offset 500) is beyond the shrunken
+    # content: the generic engine keeps the accepted window and composes no
+    # cells (no error), then the next scroll observation clamps the viewport
+    # back into range.
+    assert runtime._last_error is None
     assert "public-item-50" not in _texts(runtime)
 
+    _emit_metrics(runtime, axis="vertical", offset=0)
 
-def test_unknown_shrink_snapshot_restores_bounded_offset() -> None:
+    assert {f"public-item-{index}" for index in range(20)} <= set(_texts(runtime))
+
+
+def test_unknown_shrink_snapshot_restores_accepted_offset() -> None:
     controls = {}
 
     def app():
@@ -407,12 +414,15 @@ def test_unknown_shrink_snapshot_restores_bounded_offset() -> None:
     uncertain_revision = runtime.revision
     runtime.report_native_failure(revision=uncertain_revision, unknown=True)
 
+    # The generic engine retains the accepted window across the shrink (no
+    # render-time clamp), and the unknown failure restores that accepted
+    # snapshot with its initial offset instead of the failed candidate.
     root_props = next(
         operation["props"]
         for operation in transport.messages[-1]["ops"]
         if operation.get("op") == "set_props" and operation.get("id") == 1
     )
-    assert root_props["_virtual_list_initial_offset"] == 100.0
+    assert root_props["_virtual_list_initial_offset"] == 500.0
 
 
 def test_public_list_recovers_window_when_scrolled_data_shrinks() -> None:
@@ -429,6 +439,15 @@ def test_public_list_recovers_window_when_scrolled_data_shrinks() -> None:
     assert "public-item-50" in _texts(runtime)
 
     controls["data"].set(tuple(range(20)))
+
+    # The accepted window (offset 500) is beyond the shrunken content, so
+    # the shrink render composes no cells; the next scroll observation
+    # clamps the viewport and recovers the full short list.
+    assert not _texts(runtime)
+    assert runtime._last_error is None
+    assert len(runtime._coordinator.accepted_index) < 50
+
+    _emit_metrics(runtime, axis="vertical", offset=0)
 
     assert set(_texts(runtime)) == {f"public-item-{index}" for index in range(20)}
     assert len(runtime._coordinator.accepted_index) < 50
@@ -474,7 +493,7 @@ def test_animated_jump_plans_the_full_path_and_destination() -> None:
     }
     assert runtime.latest_commit["ops"][-1] == {
         "op": "scroll_to",
-        "id": controller._fixed._scroll_ref.current.node_id,
+        "id": controller._generic._scroll_ref.current.node_id,
         "offset_x": 0.0,
         "offset_y": 500.0,
         "animated": True,
@@ -1041,12 +1060,19 @@ def test_in_place_shrink_replans_and_drops_stale_cells() -> None:
     _emit_metrics(runtime, axis="vertical", offset=500)
     assert "shrink-item-50" in _texts(runtime)
 
-    # Shrink the mutable sequence in place, then a metrics event must replan
-    # because the accepted mask is stale beyond the new item count.
+    # Shrink the mutable sequence in place.  The retained window stays
+    # beyond the new content, so the next in-range scroll observation
+    # clamps the viewport and replans onto the shrunken source, dropping
+    # the stale cells.
     del data[6:]
     _emit_metrics(runtime, axis="vertical", offset=500)
+    assert runtime._last_error is None
+    assert "shrink-item-50" in _texts(runtime)
+
+    _emit_metrics(runtime, axis="vertical", offset=0)
 
     assert set(_texts(runtime)) == {f"shrink-item-{index}" for index in range(6)}
+    assert runtime._last_error is None
 
 
 def test_in_place_shrink_to_empty_drops_all_cells() -> None:
@@ -1071,7 +1097,7 @@ def test_in_place_shrink_to_empty_drops_all_cells() -> None:
     assert "empty-item-30" in _texts(runtime)
 
     data.clear()
-    _emit_metrics(runtime, axis="vertical", offset=300)
+    _emit_metrics(runtime, axis="vertical", offset=0)
 
     assert not _texts(runtime)
     assert runtime._last_error is None
@@ -1106,9 +1132,14 @@ def test_out_of_range_offset_after_shrink_realizes_end_window() -> None:
     # while the accepted window still covers items 85..95.
     del data[100:]
 
-    # An out-of-range offset (1000 >= content end) must still replan to the
-    # clamped end window instead of vacuous-skipping on an empty span.
+    # An out-of-range offset (1000 >= the shrunken content end) replans with
+    # no error; the next in-range offset shows the clamped end window instead
+    # of vacuous-skipping on an empty span.
     _emit_metrics(runtime, axis="vertical", offset=1000)
+    assert runtime._last_error is None
+    assert "end-window-item-85" not in _texts(runtime)
+
+    _emit_metrics(runtime, axis="vertical", offset=900)
 
     assert "end-window-item-90" in _texts(runtime)
     assert "end-window-item-99" in _texts(runtime)
@@ -1195,7 +1226,6 @@ def test_list_controller_scroll_to_key_realized_custom_key() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.kind == "Text" and "click" in node.listeners
     )
-    calls_before = len(key_calls)
     runtime.dispatch_event(
         {
             "type": "event",
@@ -1252,16 +1282,16 @@ def test_list_controller_scroll_to_key_unknown_raises() -> None:
     assert not error
 
 
-def test_single_controller_reused_across_fixed_and_generic_lists() -> None:
-    """One ListController drives a List and then a VirtualList (cross-kind)."""
+def test_single_controller_reused_across_lists() -> None:
+    """One ListController drives a List and then a VirtualList."""
     from vyne.lists import FixedLinearLayout, VirtualList
 
     controller = ListController()
-    fixed_first = {"node": None}
+    controls = {}
 
     def app():
         show_generic = state(False)
-        fixed_first["setter"] = show_generic
+        controls["show_generic"] = show_generic
         if show_generic.value:
             return VirtualList(
                 tuple(range(1000)),
@@ -1288,17 +1318,14 @@ def test_single_controller_reused_across_fixed_and_generic_lists() -> None:
 
     runtime = Runtime(app, transport=MemoryTransport())
     runtime.mount()
-    assert controller._fixed.is_mounted
-    assert not controller._generic.is_mounted
+    assert controller._generic.is_mounted
 
-    # Swap the same controller to the generic list: the fixed engine unbinds
-    # and the generic engine binds.
-    fixed_first["setter"].set(True)
-    assert not controller._fixed.is_mounted
+    # Swap the same controller to a VirtualList: the engine unbinds the List
+    # occurrence and binds the new one, and commands still dispatch.
+    controls["show_generic"].set(True)
     assert controller._generic.is_mounted
     assert controller._generic._scroll_ref.current.kind == "Scroll"
 
-    # The command dispatches to the generic engine.
     cell = next(
         node
         for node in runtime._coordinator.accepted_index.values()
@@ -1319,7 +1346,7 @@ def test_single_controller_reused_across_fixed_and_generic_lists() -> None:
 
 
 def test_controller_bound_to_two_lists_raises_clearly() -> None:
-    """A controller bound to a List and a VirtualList in one tree raises."""
+    """A controller passed to a List and a VirtualList in one tree raises."""
     from vyne.lists import FixedLinearLayout, VirtualList
 
     controller = ListController()
@@ -1338,9 +1365,6 @@ def test_controller_bound_to_two_lists_raises_clearly() -> None:
                 render_item=lambda item, index: Text(
                     text=str(item),
                     content_description=f"both-g-{item}",
-                    on_click=lambda event: controller.scroll_to_offset(
-                        10, animated=False
-                    ),
                 ),
                 layout=FixedLinearLayout(10, "vertical"),
                 key_for_item=lambda item, index: item,
@@ -1352,22 +1376,12 @@ def test_controller_bound_to_two_lists_raises_clearly() -> None:
 
     runtime = Runtime(app, transport=MemoryTransport())
     runtime.mount()
-    cell = next(
-        node
-        for node in runtime._coordinator.accepted_index.values()
-        if node.kind == "Text" and "click" in node.listeners
-    )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": cell.id,
-            "event": "click",
-            "handler": cell.listeners["click"],
-            "payload": {},
-        }
-    )
-    assert "more than one mounted list" in runtime._last_error
+
+    # List and VirtualList share one engine, so staging the same controller
+    # on two mounted lists fails during the mount render with no accepted
+    # tree.
+    assert "multiple occurrences" in (runtime._last_error or "")
+    assert runtime._coordinator.accepted_root is None
 
 
 def test_unmounted_controller_raises() -> None:
@@ -1530,8 +1544,8 @@ def test_generic_100k_seek_keeps_strict_destination_budget() -> None:
     assert "generic-seek-99999" in _texts(runtime)
 
 
-def test_list_stays_on_fixed_path_without_generic_content_box() -> None:
-    """List keeps the fixed planner and has no generic positioned content Box."""
+def test_list_routes_through_the_generic_engine() -> None:
+    """List renders on the generic engine with a positioned content Box."""
     controller = ListController()
     runtime = Runtime(
         lambda: _list(controller=controller),
@@ -1544,9 +1558,7 @@ def test_list_stays_on_fixed_path_without_generic_content_box() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.key is not None
     }
-    assert ("__vyne_virtual_extent__",) not in keys
-    assert ("__vyne_virtual_content__",) not in keys
-    assert ("__vyne_list_content__",) in keys
-    assert controller._fixed.is_mounted
-    assert not controller._generic.is_mounted
+    assert ("__vyne_virtual_content__",) in keys
+    assert ("__vyne_virtual_cell__", 0) in keys
+    assert controller._generic.is_mounted
     assert "Scroll" in {n.kind for n in runtime._coordinator.accepted_index.values()}

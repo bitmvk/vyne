@@ -25,8 +25,6 @@ from dataclasses import dataclass
 import math
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from vyne._lists.model import FixedExtentLayout
-
 
 def _finite_non_negative(value: object, *, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -402,18 +400,17 @@ class FixedLinearLayout:
     def _index_range(
         self, start: float, stop: float, item_count: int
     ) -> tuple[int, int]:
-        """Half-open index span ``[start, stop)`` on the main axis, O(1).
-
-        Delegates the interval-to-range math to the private engine's
-        :class:`~vyne._lists.model.FixedExtentLayout` so the public layout and
-        the fixed engine share one projection implementation.
-        """
+        """Return the O(1) half-open index span for one main-axis interval."""
         if item_count == 0 or stop <= start:
             return (0, 0)
-        item_range = FixedExtentLayout(item_count, self.item_extent).range_for_interval(
-            start, stop
-        )
-        return (item_range.start, item_range.stop)
+        total = item_count * self.item_extent
+        bounded_start = min(start, total)
+        bounded_stop = min(stop, total)
+        if bounded_stop <= bounded_start:
+            return (item_count, item_count)
+        first = min(item_count, math.floor(bounded_start / self.item_extent))
+        last = min(item_count, math.ceil(bounded_stop / self.item_extent))
+        return (first, max(first, last))
 
 
 def select_placements(

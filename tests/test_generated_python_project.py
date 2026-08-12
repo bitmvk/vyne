@@ -18,7 +18,6 @@ import sys
 import unittest
 
 from vyne.cli.new import create_project
-from vyne.cli.project import load_project
 
 
 class GeneratedPythonProjectTests(unittest.TestCase):
@@ -159,6 +158,16 @@ class GeneratedPythonProjectTests(unittest.TestCase):
             self.assertIn('include(":app")', content)
             self.assertNotIn("runtime", content)
             self.assertIn("pluginManagement", content)
+
+    def test_generated_app_includes_activity_dependency(self):
+        """The copied host's ComponentActivity base class is resolvable."""
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ActivityDependency"
+            create_project(path, package="com.example.activity")
+            content = (path / "android/app/build.gradle.kts").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("androidx.activity:activity:", content)
 
     def test_all_generated_files_are_valid_utf8(self):
         """Every generated text file is valid UTF-8."""

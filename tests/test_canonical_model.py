@@ -2,7 +2,7 @@
 
 Covers MODEL-01, MODEL-02, MODEL-03 requirements:
 - FrozenMap immutability
-- freeze/thaw and opaque-value rules
+- freezing and opaque-value rules
 - Color and numeric validation helpers
 - Schema completeness
 - Canonical lowering and native-prop projection
@@ -20,14 +20,12 @@ import unittest
 from vyne.values import (
     FrozenMap,
     freeze,
-    thaw,
     is_valid_color,
     is_finite_number,
     validate_finite,
     validate_positive,
     validate_non_negative,
     is_valid_dash_array,
-    validate_dash_array,
 )
 from vyne.spec.schema_v2 import (
     ANIMATABLE_PROPS,
@@ -38,11 +36,7 @@ from vyne.spec.schema_v2 import (
 )
 from vyne.lowering import lower_element, CanonicalElement
 from vyne.elements import (
-    Element,
-    Box, Layout, Row, Column, Text, TextInput, Image, Scroll, Path, Canvas,
-)
-from vyne.style import (
-    Style, Decoration, Stroke, CornerRadius, Shadow, Ripple,
+    Box, Layout, Text, TextInput,
 )
 from vyne.refs import Ref
 
@@ -95,16 +89,6 @@ class FrozenMapTests(unittest.TestCase):
         fm3 = fm.with_item("a", 10)
         self.assertEqual(fm3["a"], 10)
 
-    def test_without_removes_key(self):
-        fm = FrozenMap([("a", 1), ("b", 2)])
-        fm2 = fm.without("a")
-        self.assertNotIn("a", fm2)
-        self.assertIn("b", fm2)
-
-    def test_without_nonexistent_returns_self(self):
-        fm = FrozenMap([("a", 1)])
-        self.assertIs(fm.without("b"), fm)
-
     def test_get_with_default(self):
         fm = FrozenMap([("a", 1)])
         self.assertEqual(fm.get("a"), 1)
@@ -119,7 +103,7 @@ class FrozenMapTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# freeze / thaw
+# freeze
 # ---------------------------------------------------------------------------
 
 class FreezeThawTests(unittest.TestCase):
@@ -133,14 +117,6 @@ class FreezeThawTests(unittest.TestCase):
         result = freeze([1, 2, {"a": 3}])
         self.assertIsInstance(result, tuple)
         self.assertIsInstance(result[2], FrozenMap)
-
-    def test_thaw_restores_mutable(self):
-        original = {"a": [1, 2]}
-        frozen = freeze(original)
-        thawed = thaw(frozen)
-        self.assertEqual(thawed, original)
-        self.assertIsInstance(thawed, dict)
-        self.assertIsInstance(thawed["a"], list)
 
     def test_freeze_scalars_pass_through(self):
         self.assertIsNone(freeze(None))

@@ -82,8 +82,6 @@ The planner output is verified by a reference applier:
 
 - `tests/support/native_model.py` — applies ops to a fresh simulated
   native tree
-- `tests/support/reconciliation_oracle.py` — compares the applied tree
-  against building the desired tree from scratch
 
 Any plan must reproduce the desired tree exactly. This is a test-only
 enforcement of the renderer contract (RP3-02).

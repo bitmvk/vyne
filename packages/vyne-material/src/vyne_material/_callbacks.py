@@ -1,96 +1,14 @@
-"""One-time callback inspection and adapter for Material value handlers.
+"""Selection value normalization for Material selection components.
 
-Every component that accepts ``on_change`` / ``on_select`` / ``on_click``
-etc. inspects the callback signature **once** at construction time and reuses
-the same adapter for every gesture.  This avoids repeated ``inspect.signature``
-calls and ensures unsupported signatures fail fast.
+Controlled callbacks (``on_change`` / ``on_select`` / ``on_click``) are
+invoked directly with their documented value argument; zero-argument event
+callbacks are handled by the core event registry.  This module only owns
+selection-value validation for ButtonGroup / SegmentedButtonGroup.
 """
 
 from __future__ import annotations
 
-import inspect
-from collections.abc import Callable
 from typing import Any
-
-Callback = Callable[..., Any]
-
-
-class CallbackAdapter:
-    """Inspects a callback signature once, then routes values efficiently.
-
-    Construction-time behaviour:
-    * Tries ``signature.bind(value)`` first to confirm the callback can
-      accept a single positional argument.
-    * If that fails, tries ``signature.bind()`` for zero-argument callbacks.
-    * If neither succeeds, raises TypeError at construction time so
-      unsupported signatures fail fast.
-    * Built-ins and objects without a valid ``__signature__`` are treated as
-      value-accepting (defensive / ``inspect.signature`` raises).
-    * Inspection happens exactly once; the resolved flags are immutable.
-    """
-
-    __slots__ = ("_callback", "_accepts_positional")
-
-    def __init__(self, callback: Callback) -> None:
-        self._callback = callback
-        try:
-            sig = inspect.signature(callback)
-        except (TypeError, ValueError):
-            # Built-ins and objects without inspectable signatures:
-            # treat as value-accepting.
-            self._accepts_positional = True
-            return
-
-        sentinel = object()
-        try:
-            sig.bind(sentinel)
-        except TypeError:
-            try:
-                sig.bind()
-            except TypeError as no_value_error:
-                raise TypeError(
-                    "Callback must accept exactly one positional value or no arguments"
-                ) from no_value_error
-            self._accepts_positional = False
-        else:
-            self._accepts_positional = True
-
-    def invoke(self, value: Any) -> None:
-        """Call the wrapped callback with or without *value*."""
-        if self._accepts_positional:
-            self._callback(value)
-        else:
-            self._callback()
-
-
-def prepare_handler(callback: Callback | None, value: Any) -> Callable[[Any], None] | None:
-    """Create an event handler that invokes *callback* with *value*.
-
-    The adapter is inspected once; the returned closure delegates every
-    subsequent gesture to the adapter.
-    """
-    if callback is None:
-        return None
-    adapter = CallbackAdapter(callback)
-
-    def handler(_event: Any) -> None:
-        adapter.invoke(value)
-
-    return handler
-
-
-def prepare_value_binding(callback: Callback) -> CallbackAdapter:
-    """Inspect *callback* once, then use ``adapter.invoke(value)`` inline.
-
-    Designed for components that calculate a different value per event
-    (sliders, date cells) and need to call the adapter directly.
-    """
-    return CallbackAdapter(callback)
-
-
-# ---------------------------------------------------------------------------
-# Selection normalizer (MATERIAL-02)
-# ---------------------------------------------------------------------------
 
 
 def normalize_selection(

@@ -19,12 +19,11 @@ If a change breaks one, the change needs a design discussion first.
 | RE-6 | terminal fault bounding: 5 consecutive faults -> `FAULTED`, no retry storms | `runtime.py` |
 | MODEL-02 | unsupported features fail with a clear field path, never silently | `lowering.py`, `protocol.py` |
 | MODEL-03 | elements, props, and canonical values are deeply immutable (FrozenMap / tuples) | `values.py`, `elements.py` |
-| GEN-14 | generation is transactional: scan/stage/revalidate/publish/commit/recover with a durable journal | `cli/generation.py` |
+| GEN-14 | generation is atomic: empty-target rule, temp-sibling staging, single `os.replace` publish | `cli/generation.py` |
 
 ## Cross-cutting design patterns
 
-The ten patterns in `../design-patterns-plan.md` are all implemented.
-The two that touch everything:
+The two patterns that touch everything:
 
 ### Design-pattern #1 — session facade
 
@@ -49,7 +48,7 @@ stale-session receipts are rejected.
 | 2 | Memento | `PropMemento` — one accepted-prop authority (presence, wire value, live values), deep-copied |
 | 3 | Composite Command | `restoreAll` — every undo runs, first failure rethrown, later ones suppressed |
 | 4 | StateHost | State cells bound to their owning Runtime at creation; no ContextVar lookup on write |
-| 6-10 | (see plan) | table-driven outcome strategy, snapshot/resync policy, bounded fault handling |
+| 6-10 | remaining | table-driven outcome strategy, snapshot/resync policy, bounded fault handling |
 
 ## Ownership rules
 
@@ -66,5 +65,4 @@ stale-session receipts are rejected.
 ## Related
 
 - [getting-started.md](getting-started.md) — the never-do list
-- [../design-patterns-plan.md](../design-patterns-plan.md) — full plan
 - [../canonical-ui-spec.md](../canonical-ui-spec.md) — the platform-neutral model

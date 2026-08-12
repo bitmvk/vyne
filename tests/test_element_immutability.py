@@ -13,13 +13,12 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.values import FrozenMap, freeze, thaw
-from vyne.lowering import lower_element, CanonicalElement
+from vyne.values import FrozenMap, freeze
+from vyne.lowering import lower_element
 from vyne.elements import (
     Element,
-    Box, Text, Layout, Row, Column, Canvas,
+    Box, Text, Canvas,
 )
-from vyne.style import Style, Decoration, Fill
 
 
 class ElementConstructionImmutabilityTests(unittest.TestCase):
@@ -125,19 +124,6 @@ class ElementConstructionImmutabilityTests(unittest.TestCase):
         # The nested list should be a tuple
         self.assertIsInstance(nested_val["b"], tuple,
             f"Nested list should be tuple, got {type(nested_val['b']).__name__}")
-
-    def test_frozenmap_from_dict_deep(self):
-        """FrozenMap.from_dict(deep=True) must deep-freeze."""
-        d = {"colors": ["#FF0000", "#00FF00"], "nested": {"a": [1, 2]}}
-        fm = FrozenMap.from_dict(d, deep=True)
-        # Top level is FrozenMap
-        self.assertIsInstance(fm, FrozenMap)
-        # colors list should be tuple
-        self.assertIsInstance(fm["colors"], tuple)
-        # nested dict should be FrozenMap
-        self.assertIsInstance(fm["nested"], FrozenMap)
-        # deep within nested
-        self.assertIsInstance(fm["nested"]["a"], tuple)
 
     def test_no_internal_ids_on_element(self):
         """Element must have no _view_id, _validated, or other runtime IDs."""

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import time
 import unittest
+from pathlib import Path
 
 from vyne.bootstrap import _start_registered_app
 from vyne.transport import MemoryTransport
-
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -142,6 +141,43 @@ class ShowcaseAppTests(unittest.TestCase):
 
         _click(self.runtime, "Filter", 5)
         _node_with_description(self.runtime, "Filter, selected")
+
+    def test_list_gallery_has_static_and_mutable_virtual_lists(self):
+        _click(self.runtime, "Lists", 1)
+        _node_with_description(self.runtime, "showcase-lists")
+        _node_with_description(self.runtime, "static-list")
+        _node_with_description(self.runtime, "dynamic-list")
+        self.assertEqual(
+            _node_with_description(self.runtime, "dynamic-list-count").props["text"],
+            "30,000 state-owned rows · add, remove, or reorder",
+        )
+
+        _click(self.runtime, "dynamic-list-add", 2)
+        self.assertEqual(
+            _node_with_description(self.runtime, "dynamic-list-count").props["text"],
+            "30,001 state-owned rows · add, remove, or reorder",
+        )
+        _click(self.runtime, "dynamic-list-reverse", 3)
+        _node_with_description(self.runtime, "dynamic-item-30000")
+
+    def test_material_gallery_mounts_every_widget_group(self):
+        _click(self.runtime, "Material", 1)
+        for description in (
+            "showcase-material",
+            "material-app-bars",
+            "material-buttons",
+            "material-surfaces",
+            "material-sheets",
+            "material-lists-menus",
+            "material-progress",
+            "material-navigation",
+            "material-selection",
+            "material-inputs",
+            "material-pickers",
+            "material-feedback",
+            "material-tabs-toolbars",
+        ):
+            _node_with_description(self.runtime, description)
 
     def test_showcase_slider_drags_continuously(self):
         _click(self.runtime, "Controls", 1)

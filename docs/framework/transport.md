@@ -26,8 +26,8 @@ Used by tests, demos, and early host integration.
 
 ## DirectTransport (production Android path)
 
-Publishes logical commits through direct Java method calls. There is no
-message envelope, opcode table, or binary codec.
+Publishes logical commits through one JSON bridge call per commit. There is
+no message envelope, opcode table, or binary codec.
 
 Key properties:
 
@@ -37,53 +37,28 @@ Key properties:
 - session id published on the host before the first commit, so native
   receipts carry the real session id (design-pattern #1)
 
-### Value encoding
+### One JSON commit call
 
-Values are encoded into typed columns so one JNI crossing carries many
-values:
+`DirectTransport.send` serializes the whole ordered op stream with
+`json.dumps` into one compact document — `{"revision": N, "ops": [...]}` —
+and hands it to a single `commitJson` entry point. One JNI crossing carries
+an entire commit, whatever its size or shape: fresh mounts, dense property
+updates, and mixed streams all use the same call.
 
-| tag | value |
-|---|---|
-| 0 NULL | null |
-| 1 BOOL | long 0/1 |
-| 2 INT | signed 64-bit long |
-| 3 FLOAT | double |
-| 4 STRING | string |
-| 5 JSON | compact JSON string |
-
-Parallel arrays: names, tag bytes, longs, doubles, strings. The Kotlin
-side decodes with a cursor and validates column lengths.
-
-### Batching paths
-
-The transport scans the op stream and chooses the cheapest call shape:
-
-1. **Complete mount commit** (`commitMountNodes`) — a fresh tree is sent
-   as one call: ids, kinds, prop counts, names, tagged values, parent
-   ids, insertion modes/indices, post attachments, listeners.
-2. **Pure prop batches** — runs of `set_prop` ops become `commitPropBatch`
-   (typed arrays) or `commitStringPropBatch` (one repeated string prop).
-3. **Contiguous string batches** — repeated string props on consecutive
-   node ids compress to `(first_id, name, values)`.
-4. **Mixed streams** — `beginCommit`, per-op typed calls, `finishCommit`;
-   `abortCommit` discards on error.
-
-Rationale: "a commit does not cross JNI once per operation." Mounts and
-repeated property updates are the hot paths; they use semantic batching.
+The Kotlin side decodes the document with org.json into a
+`RenderTransaction` and posts it to the UI thread. Any decode error aborts
+the transaction and propagates to Python, which rolls back the framework
+(stateful values like `set_prop` scalars, nested containers, and animation
+payloads cross the boundary as plain JSON).
 
 ### Host method surface
 
-`DirectRenderHost` exposes one method per operation:
+`DirectRenderHost` exposes a small stable surface:
 
-- `clear`, `create`, `setProps`, `setProp`, `removeProp`
-- `listen(id, event, handler, latest)`, `unlisten`
-- `insertChild`, `moveChild`, `removeChild`, `remove`
-- `motionSetTarget`, `motionCancel`, `motionDriverSetTarget`,
-  `motionDriverCancel`
-- `beginCommit(revision)`, `finishCommit()`, `abortCommit()`
+- `commitJson(json)` — one commit per call
 - `setSessionId`, `extensionKinds`, `createCallback`, `getActivity`
 
-`finishCommit()` posts one immutable `RenderTransaction` to the UI
+`commitJson` posts one immutable `RenderTransaction` to the UI
 thread. Python-side calls never touch Views.
 
 ## Related

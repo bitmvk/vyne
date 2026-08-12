@@ -78,5 +78,6 @@ chaquopy {
 }
 
 dependencies {
+    implementation("androidx.activity:activity:1.8.1")
     implementation("androidx.annotation:annotation:1.9.1")
 }

@@ -1,10 +1,10 @@
-"""Small private helpers shared by the fixed and generic list engines.
+"""Small private helpers shared by the generic list engine.
 
 M4 extracted these from duplicated controller/render code in
-``_lists/fixed.py`` and ``_lists/generic.py``.  Both engines keep their own
-planning, composition, and binding machinery: the fixed engine is the O(1)
-benchmark specialization and the generic engine accepts arbitrary placements.
-Only the genuinely identical pieces live here.
+``_lists/fixed.py`` and ``_lists/generic.py``.  After the fixed engine was
+removed, the generic engine is the only consumer: it keeps its own planning,
+composition, and binding machinery, and these genuinely shared pieces live
+here.
 """
 
 from __future__ import annotations

@@ -4,12 +4,13 @@ Proves:
 - The `vyne` core imports without `vyne_material` and without exposing
   Material names or the legacy `AnimatedValue`.
 - The `vyne-material` distribution imports as `vyne_material` and re-exports
-  the Material catalog when installed in the workspace.
+  the Material components when installed in the workspace.
 - Both distributions can be imported in the same process without a cycle.
 """
 
 from __future__ import annotations
 
+import importlib
 import sys
 import unittest
 
@@ -50,7 +51,7 @@ class CoreBoundaryTests(unittest.TestCase):
         """Material component names are not in the core __all__."""
         import vyne
         for name in ("Button", "Slider", "Switch", "TextField",
-                     "MaterialTheme", "ColorScheme", "MATERIAL3_CATALOG"):
+                     "MaterialTheme", "ColorScheme"):
             self.assertNotIn(name, vyne.__all__)
             self.assertFalse(hasattr(vyne, name))
 
@@ -71,14 +72,15 @@ class CoreBoundaryTests(unittest.TestCase):
 class MaterialDistributionTests(unittest.TestCase):
     """The vyne-material workspace member must import and function."""
 
-    def test_material_imports_and_exposes_catalog(self):
+    def test_material_imports_and_exposes_components(self):
         import vyne_material
         self.assertTrue(callable(vyne_material.Button))
         self.assertTrue(callable(vyne_material.Slider))
         self.assertTrue(callable(vyne_material.Switch))
         self.assertTrue(callable(vyne_material.TextField))
         self.assertTrue(callable(vyne_material.MaterialTheme))
-        self.assertIn("MATERIAL3_CATALOG", vyne_material.__all__)
+        self.assertNotIn("MATERIAL3_CATALOG", vyne_material.__all__)
+        self.assertNotIn("Divider", vyne_material.__all__)
 
     def test_material_theme_types_are_exported(self):
         import vyne_material
@@ -97,7 +99,6 @@ class MaterialDistributionTests(unittest.TestCase):
 
     def test_material_components_render_to_core_primitives(self):
         """Material composites lower to core primitives (no new kinds)."""
-        import vyne
         import vyne_material
 
         core_kinds = {"Box", "Layout", "Text", "TextInput", "Canvas", "Scroll"}
@@ -110,8 +111,8 @@ class MaterialDistributionTests(unittest.TestCase):
 
     def test_material_and_core_import_together(self):
         """Both distributions can coexist in one process without a cycle."""
-        import vyne
-        import vyne_material
+        importlib.import_module("vyne")
+        importlib.import_module("vyne_material")
         self.assertIn("vyne", sys.modules)
         self.assertIn("vyne_material", sys.modules)
 

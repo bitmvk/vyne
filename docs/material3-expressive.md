@@ -65,7 +65,7 @@ in Python and makes initial rendering and later updates use the same path.
 | Chips | `Chip` (`assist`, `filter`, `input`, `suggestion`) |
 | Date pickers | `DatePicker`, `DateRangePicker` |
 | Dialogs | `Dialog` |
-| Divider | `vyne_material.Divider`, `MaterialDivider` |
+| Divider | `MaterialDivider` |
 | Extended FAB | `ExtendedFloatingActionButton` |
 | FAB menu | `FloatingActionButtonMenu`, `FabMenuItem` |
 | Floating action button | `FloatingActionButton` |
@@ -90,9 +90,6 @@ in Python and makes initial rendering and later updates use the same path.
 | Time pickers | `TimePicker` (12/24 hour, hour/minute dial selection) |
 | Toolbars | `Toolbar`, `FloatingToolbar` (horizontal and vertical) |
 | Tooltips | `Tooltip` (plain and rich) |
-
-`MATERIAL3_CATALOG` exposes the same 36-family index for automated coverage
-checks.
 
 ## Theme tokens
 

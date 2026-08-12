@@ -21,10 +21,8 @@ from vyne.lowering import lower_element
 from vyne.style import (
     CornerRadius,
     Decoration,
-    Fill,
     Ripple,
     Shadow,
-    Shape,
     Stroke,
     Style,
 )
@@ -90,18 +88,18 @@ class DecorationLoweringTests(unittest.TestCase):
 
     def test_gradient_fills_rejected(self):
         for fill in (
-            Fill.linear_gradient(start_color="#000000", end_color="#ffffff"),
-            Fill.radial_gradient(center_color="#000000", end_color="#ffffff", radius=4),
-            Fill.sweep_gradient(start_color="#000000", end_color="#ffffff"),
+            {"kind": "linear_gradient", "start_color": "#000000", "end_color": "#ffffff"},
+            {"kind": "radial_gradient", "center_color": "#000000", "end_color": "#ffffff", "radius": 4},
+            {"kind": "sweep_gradient", "start_color": "#000000", "end_color": "#ffffff"},
         ):
-            with self.subTest(kind=fill.kind):
+            with self.subTest(kind=fill["kind"]):
                 with self.assertRaisesRegex(ValueError, "not yet supported"):
                     _lower(Box(decoration=Decoration.rectangle(fill=fill)))
 
     def test_non_rectangle_shape_rejected(self):
         with self.assertRaisesRegex(ValueError, "rectangle"):
             _lower(Box(decoration=Decoration(
-                shape=Shape.oval(fill="#ff0000"),
+                shape={"kind": "oval", "fill": "#ff0000"},
             )))
 
     def test_supported_decoration_tier_lowers(self):

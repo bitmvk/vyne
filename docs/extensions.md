@@ -57,8 +57,8 @@ object TimerRingExtension {
 }
 ```
 
-Typed helpers: `floatProp(default)`, `colorProp(default)`, `stringProp(default)`,
-`boolProp(default)` — all treat null as removal.
+Typed helpers: `floatProp(default)`, `colorProp(default)` — all treat null
+as removal.
 
 ## Python side: tools, not wiring
 
@@ -103,7 +103,7 @@ from the session sequence).
 
 ## Build
 
-`vyne build` regenerates `ExtensionRegistrant.kt` (journaled, byte-identical
+`vyne build` regenerates `ExtensionRegistrant.kt` (atomic, byte-identical
 skip) from the discovered `extensions/*/extension.toml` files, then compiles
 the Kotlin dirs, packages the Python dirs, and assembles the APK. `vyne
 doctor` validates each extension. `vyne extension new <name>` scaffolds one.

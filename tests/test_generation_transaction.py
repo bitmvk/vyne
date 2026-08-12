@@ -1,27 +1,24 @@
 """Generation transaction contract tests (GEN-14 / GN-1, GN-2).
 
-Verifies:
-- Fresh/empty/nonempty/force/idempotent generation preserves unrelated files
-- Late conflicts and symlink/path escapes reject before publication
-- Exact desired bytes/modes on the complete tree manifest
+Verifies the empty-target rule and atomic publish:
+- Fresh and empty targets receive exact desired bytes/modes
+- Non-empty targets are refused unless ``force`` replaces them entirely
+- Path escapes are rejected
+- No staging debris after success or failure
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import os
 import stat
 import unittest
 
-from vyne.cli.generation import (
-    ConflictPolicy,
-    PlanBuilder,
-)
+from vyne.cli.generation import PlanBuilder
 
 
 class GenerationTransactionTests(unittest.TestCase):
-    """GN-1: Fresh/empty/nonempty/force/idempotent generation."""
+    """GN-1: Empty-target rule and atomic publish."""
 
     def test_fresh_target_creates_files_with_exact_content(self):
         """A new (non-existent) target receives exact desired bytes."""
@@ -42,7 +39,7 @@ class GenerationTransactionTests(unittest.TestCase):
             self.assertEqual((target / "sub" / "b.txt").read_text(), "hello b")
 
     def test_empty_target_directory_is_treated_as_fresh(self):
-        """An empty existing directory receives files without backup/restore."""
+        """An empty existing directory receives files."""
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "empty-dir"
             target.mkdir()
@@ -59,96 +56,109 @@ class GenerationTransactionTests(unittest.TestCase):
             self.assertTrue((target / "hello.txt").is_file())
             self.assertEqual((target / "hello.txt").read_text(), "world")
 
-    def test_error_policy_raises_on_conflict_before_preflight(self):
-        """ERROR policy raises immediately during add_file when content differs."""
+    def test_nonempty_target_refused_without_force(self):
+        """A non-empty target is refused: no merging, no partial writes."""
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "existing"
             target.mkdir()
-            (target / "conflict.txt").write_text("old", encoding="utf-8")
+            (target / "notes.txt").write_text("keep me", encoding="utf-8")
 
             builder = PlanBuilder(target)
-            with self.assertRaises(RuntimeError):
-                builder.add_file("conflict.txt", "new",
-                                 policy=ConflictPolicy.ERROR)
-
-    def test_skip_policy_leaves_existing_untouched(self):
-        """SKIP policy does not overwrite existing files."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "existing"
-            target.mkdir()
-            (target / "skip.txt").write_text("original", encoding="utf-8")
-
-            builder = PlanBuilder(target)
-            builder.add_file("skip.txt", "new content",
-                             policy=ConflictPolicy.SKIP)
+            builder.add_file("new.txt", "new content")
 
             plan = builder.preflight()
             try:
-                plan.apply()
+                with self.assertRaisesRegex(RuntimeError, "non-empty"):
+                    plan.apply()
             finally:
                 plan.cleanup()
 
-            self.assertEqual((target / "skip.txt").read_text(), "original")
+            # Target is untouched: no merge of new files, no lost files.
+            self.assertFalse((target / "new.txt").exists())
+            self.assertEqual((target / "notes.txt").read_text(), "keep me")
 
-    def test_byte_identical_file_does_not_conflict(self):
-        """ERROR policy is satisfied when existing content matches desired."""
+    def test_force_replaces_nonempty_target_entirely(self):
+        """force replaces the whole tree, including unrelated files."""
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "existing"
             target.mkdir()
-            (target / "same.txt").write_text("identical", encoding="utf-8")
+            (target / "old.txt").write_text("old", encoding="utf-8")
 
             builder = PlanBuilder(target)
-            builder.add_file("same.txt", "identical")
+            builder.add_file("new.txt", "new content")
 
             plan = builder.preflight()
             try:
-                plan.apply()
+                plan.apply(force=True)
             finally:
                 plan.cleanup()
 
-            self.assertEqual((target / "same.txt").read_text(), "identical")
+            self.assertTrue((target / "new.txt").is_file())
+            self.assertEqual((target / "new.txt").read_text(), "new content")
+            self.assertFalse((target / "old.txt").exists())
+
+    def test_force_refuses_file_target(self):
+        """A regular-file target is never a valid generation target."""
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "not-a-dir"
+            target.write_text("file", encoding="utf-8")
+
+            builder = PlanBuilder(target)
+            builder.add_file("a.txt", "hello")
+
+            plan = builder.preflight()
+            try:
+                with self.assertRaisesRegex(RuntimeError, "not a directory"):
+                    plan.apply(force=True)
+            finally:
+                plan.cleanup()
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "file")
+
+    def test_force_refuses_symlink_target(self):
+        """Generation never follows a symlink target."""
+        with TemporaryDirectory() as tmp:
+            real = Path(tmp) / "real"
+            real.mkdir()
+            target = Path(tmp) / "link"
+            target.symlink_to(real)
+
+            builder = PlanBuilder(target)
+            builder.add_file("a.txt", "hello")
+
+            plan = builder.preflight()
+            try:
+                with self.assertRaisesRegex(RuntimeError, "symlink"):
+                    plan.apply(force=True)
+            finally:
+                plan.cleanup()
 
     def test_idempotent_generation(self):
-        """Running generation twice on the same target produces consistent results."""
+        """Regenerating the same content into a fresh target is identical."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "idempotent"
-            target.mkdir()
+            targets = [Path(tmp) / "idempotent1", Path(tmp) / "idempotent2"]
+            for target in targets:
+                builder = PlanBuilder(target)
+                builder.add_file("a.txt", "hello")
+                builder.add_file("sub/b.txt", "world")
+                plan = builder.preflight()
+                try:
+                    plan.apply()
+                finally:
+                    plan.cleanup()
 
-            # First generation
-            builder1 = PlanBuilder(target)
-            builder1.add_file("a.txt", "hello")
-            builder1.add_file("sub/b.txt", "world")
-            plan1 = builder1.preflight()
-            try:
-                plan1.apply()
-            finally:
-                plan1.cleanup()
-
-            content_a1 = (target / "a.txt").read_text()
-
-            # Second generation on same target (simulated fresh)
-            target2 = Path(tmp) / "idempotent2"
-            builder2 = PlanBuilder(target2)
-            builder2.add_file("a.txt", "hello")
-            builder2.add_file("sub/b.txt", "world")
-            plan2 = builder2.preflight()
-            try:
-                plan2.apply()
-            finally:
-                plan2.cleanup()
-
-            content_a2 = (target2 / "a.txt").read_text()
-            self.assertEqual(content_a1, content_a2)
+            self.assertEqual(
+                (targets[0] / "a.txt").read_bytes(),
+                (targets[1] / "a.txt").read_bytes(),
+            )
 
     def test_executable_bit_set_on_gradlew(self):
         """gradlew files get 0o755 mode during staging."""
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "exec-target"
-            target.mkdir()
 
             builder = PlanBuilder(target)
-            builder.add_file("gradlew", "#!/bin/bash\necho hi\n",
-                             executable=True)
+            builder.add_file("gradlew", "#!/bin/bash\necho hi\n")
 
             plan = builder.preflight()
             try:
@@ -181,17 +191,14 @@ class GenerationTransactionTests(unittest.TestCase):
                 "deep",
             )
 
-    def test_multiple_files_different_policies(self):
-        """Mixed policies within one plan work correctly."""
+    def test_non_utf8_content_stored_as_bytes(self):
+        """Binary content is correctly stored and retrieved."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "mixed"
-            target.mkdir()
-            (target / "skip.txt").write_text("original", encoding="utf-8")
+            target = Path(tmp) / "binary-target"
+            binary_data = bytes(range(256))
 
             builder = PlanBuilder(target)
-            builder.add_file("new.txt", "brand new")
-            builder.add_file("skip.txt", "do not write",
-                             policy=ConflictPolicy.SKIP)
+            builder.add_file("data.bin", binary_data)
 
             plan = builder.preflight()
             try:
@@ -199,130 +206,165 @@ class GenerationTransactionTests(unittest.TestCase):
             finally:
                 plan.cleanup()
 
-            self.assertEqual((target / "new.txt").read_text(), "brand new")
-            self.assertEqual((target / "skip.txt").read_text(), "original")
+            self.assertEqual((target / "data.bin").read_bytes(), binary_data)
 
-    # --- GN-2: Symlink escape and path validation ---
+    def test_empty_content_file(self):
+        """Zero-byte files are correctly created."""
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "empty-file-target"
+            builder = PlanBuilder(target)
+            builder.add_file("empty.txt", "")
+
+            plan = builder.preflight()
+            try:
+                plan.apply()
+            finally:
+                plan.cleanup()
+
+            self.assertTrue((target / "empty.txt").is_file())
+            self.assertEqual((target / "empty.txt").read_text(), "")
+
+    def test_parent_directory_creation_for_nonexistent_target(self):
+        """When the target's parent directory doesn't exist, it's created."""
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "deep" / "nested" / "project"
+
+            builder = PlanBuilder(target)
+            builder.add_file("hello.txt", "world")
+
+            plan = builder.preflight()
+            try:
+                plan.apply()
+            finally:
+                plan.cleanup()
+
+            self.assertTrue(target.is_dir())
+            self.assertTrue((target / "hello.txt").is_file())
+
+    # --- GN-2: path validation ---
 
     def test_absolute_path_rejected(self):
         """Absolute paths are rejected."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "abs-test"
-            builder = PlanBuilder(target)
+            builder = PlanBuilder(Path(tmp) / "abs-test")
             with self.assertRaises(RuntimeError):
                 builder.add_file("/etc/passwd", "bad")
 
     def test_dotdot_escape_rejected(self):
         """Paths with .. segments are rejected."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "dotdot-test"
-            builder = PlanBuilder(target)
+            builder = PlanBuilder(Path(tmp) / "dotdot-test")
             with self.assertRaises(RuntimeError):
                 builder.add_file("../outside.txt", "bad")
 
     def test_dotdot_escape_in_subpath_rejected(self):
         """.. in nested path segments is rejected."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "dotdot-sub-test"
-            builder = PlanBuilder(target)
+            builder = PlanBuilder(Path(tmp) / "dotdot-sub-test")
             with self.assertRaises(RuntimeError):
                 builder.add_file("sub/../../outside.txt", "bad")
-
-    def test_symlink_escape_rejected(self):
-        """A symlink in a managed parent component pointing outside is rejected."""
-        with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "symlink-test"
-            target.mkdir()
-            # Create an external file
-            ext = Path(tmp) / "outside"
-            ext.mkdir()
-            (ext / "evil.txt").write_text("outside", encoding="utf-8")
-
-            # Create a symlink inside the target pointing outside
-            link = target / "escape"
-            link.symlink_to(ext)
-
-            builder = PlanBuilder(target)
-            with self.assertRaises(RuntimeError):
-                builder.add_file("escape/evil.txt", "inside")
 
     def test_empty_path_rejected(self):
         """Empty relative path is rejected."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "empty-path-test"
-            builder = PlanBuilder(target)
+            builder = PlanBuilder(Path(tmp) / "empty-path-test")
             with self.assertRaises(RuntimeError):
                 builder.add_file("", "empty")
 
-    # --- GN-2: Late conflict detection ---
+    # --- lifecycle guards ---
 
-    def test_late_conflict_file_created_after_planning(self):
-        """A file created after add_file but before apply is detected."""
+    def test_preflight_double_call_rejected(self):
+        """Calling preflight() twice raises RuntimeError."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "late-conflict"
-            target.mkdir()
-
-            builder = PlanBuilder(target)
-            builder.add_file("managed.txt", "planned content",
-                             policy=ConflictPolicy.REPLACE)
+            builder = PlanBuilder(Path(tmp) / "target")
+            builder.add_file("a.txt", "hello")
             plan = builder.preflight()
+            try:
+                with self.assertRaises(RuntimeError):
+                    builder.preflight()
+            finally:
+                plan.cleanup()
 
-            # Late writer creates the file after preflight but before apply
-            late_file = target / "managed.txt"
-            late_file.write_text("late writer content", encoding="utf-8")
-
-            with self.assertRaises(RuntimeError):
-                try:
+    def test_apply_double_call_rejected(self):
+        """Calling apply() twice raises RuntimeError."""
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            builder = PlanBuilder(target)
+            builder.add_file("a.txt", "hello")
+            plan = builder.preflight()
+            try:
+                plan.apply()
+                with self.assertRaises(RuntimeError):
                     plan.apply()
-                finally:
-                    plan.cleanup()
+            finally:
+                plan.cleanup()
 
-            # Target should be unchanged (rollback succeeded)
-            self.assertEqual(late_file.read_text(), "late writer content")
-
-    def test_late_conflict_file_modified_after_planning(self):
-        """A file modified after add_file but before apply is detected."""
+    def test_cleanup_removes_only_owned_staging_transaction(self):
+        """Cleaning one live plan must not delete another plan's staging."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "late-modified"
-            target.mkdir()
-            (target / "managed.txt").write_text("original", encoding="utf-8")
+            parent = Path(tmp)
+            first_builder = PlanBuilder(parent / "first")
+            first_builder.add_file("a.txt", "first")
+            second_builder = PlanBuilder(parent / "second")
+            second_builder.add_file("b.txt", "second")
 
-            builder = PlanBuilder(target)
-            builder.add_file("managed.txt", "new content",
-                             policy=ConflictPolicy.REPLACE)
-            plan = builder.preflight()
+            first = first_builder.preflight()
+            second = second_builder.preflight()
+            try:
+                self.assertTrue(first.staging_root.exists())
+                self.assertTrue(second.staging_root.exists())
+                first.cleanup()
+                self.assertFalse(first.staging_root.exists())
+                self.assertTrue(
+                    second.staging_root.exists(),
+                    "cleanup deleted a foreign live staging transaction",
+                )
+                second.apply()
+                self.assertEqual((parent / "second" / "b.txt").read_text(), "second")
+            finally:
+                first.cleanup()
+                second.cleanup()
 
-            # Late writer modifies the file
-            (target / "managed.txt").write_text("modified by late writer", encoding="utf-8")
-
-            with self.assertRaises(RuntimeError):
-                try:
-                    plan.apply()
-                finally:
-                    plan.cleanup()
-
-            # Target should be unchanged
-            self.assertEqual(
-                (target / "managed.txt").read_text(),
-                "modified by late writer",
-            )
-
-    def test_no_false_positive_when_file_unchanged(self):
-        """Revalidation passes when the target snapshot still matches."""
+    def test_cleanup_after_success_leaves_no_debris(self):
+        """After a successful apply + cleanup, no staging debris remains."""
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "no-false"
-            target.mkdir()
-
+            target = Path(tmp) / "clean-target"
             builder = PlanBuilder(target)
-            builder.add_file("stable.txt", "stable content",
-                             policy=ConflictPolicy.REPLACE)
-            plan = builder.preflight()
+            builder.add_file("hello.txt", "world")
 
-            # No late modification
+            plan = builder.preflight()
             plan.apply()
             plan.cleanup()
 
-            self.assertEqual((target / "stable.txt").read_text(), "stable content")
+            parent = target.parent
+            debris = list(parent.glob(".vyne-*"))
+            self.assertEqual(
+                len(debris), 0,
+                f"Found debris: {[str(d) for d in debris]}"
+            )
+
+    def test_cleanup_after_failure_removes_staging(self):
+        """After a refused apply, staging is cleaned up."""
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "fail-target"
+            target.mkdir()
+            (target / "keep.txt").write_text("keep", encoding="utf-8")
+
+            builder = PlanBuilder(target)
+            builder.add_file("a.txt", "hello")
+            plan = builder.preflight()
+            try:
+                with self.assertRaises(RuntimeError):
+                    plan.apply()
+            finally:
+                plan.cleanup()
+
+            parent = target.parent
+            debris = list(parent.glob(".vyne-stage-*"))
+            self.assertEqual(
+                len(debris), 0,
+                f"Found staging debris: {[str(d) for d in debris]}"
+            )
 
 
 if __name__ == "__main__":

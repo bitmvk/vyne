@@ -5,7 +5,6 @@ import unittest
 from vyne import (
     Box,
     Canvas,
-    Column,
     CornerRadius,
     Decoration,
     Fill,
@@ -55,9 +54,8 @@ class ElementTests(unittest.TestCase):
             text_color="#111111",
             decoration=Decoration(
                 shape=None,
-                shadow=Shadow(elevation=4, translation_z=1.5),
-                ripple=Ripple(color="#ffffff", bounded=False),
-                clip=True,
+                shadow=Shadow(elevation=4),
+                ripple=Ripple(color="#ffffff"),
             ),
         )
         element = Text(text="styled", style=style)
@@ -67,9 +65,8 @@ class ElementTests(unittest.TestCase):
             {
                 "text_color": "#111111",
                 "decoration": {
-                    "shadow": {"elevation": 4, "translation_z": 1.5},
-                    "ripple": {"color": "#ffffff", "bounded": False},
-                    "clip": True,
+                    "shadow": {"elevation": 4},
+                    "ripple": {"color": "#ffffff"},
                 },
             },
         )
@@ -103,14 +100,14 @@ class ElementTests(unittest.TestCase):
     def test_decoration_helpers_build_expected_shapes(self):
         decoration = Decoration.rectangle(
             fill=Fill.solid("#abcdef"),
-            stroke=Stroke("#123456", width=2, dash_width=3, dash_gap=4),
+            stroke=Stroke("#123456", width=2),
             corners=CornerRadius.only(top_left=8, bottom_right=2),
         )
 
         props = decoration.to_props()
         self.assertEqual(props["shape"]["kind"], "rectangle")
         self.assertEqual(props["shape"]["fill"], {"kind": "solid", "color": "#abcdef"})
-        self.assertEqual(props["shape"]["stroke"]["dash_gap"], 4)
+        self.assertEqual(props["shape"]["stroke"], {"color": "#123456", "width": 2})
         self.assertEqual(props["shape"]["corners"]["top_left"], 8)
 
 

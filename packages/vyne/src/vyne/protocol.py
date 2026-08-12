@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 from vyne.style import Style
@@ -148,28 +147,12 @@ def _non_negative_int(value: Any, *, path: str, node_id: bool = False) -> int:
     return value
 
 
-@dataclass(frozen=True)
-class _OperationSpec:
-    """One immutable declaration of an operation's shape and semantics.
-
-    ``required_fields`` / ``optional_fields`` define the envelope; the
-    validator owns the semantic checks. The motion operations register
-    their existing strict validators directly.
-    """
-
-    name: str
-    required_fields: frozenset[str]
-    optional_fields: frozenset[str]
-    validator: Callable[[JsonObject, str], None]
-
-
 def _simple_op_validator(
-    name: str,
     required: frozenset[str],
-    optional: frozenset[str],
+    optional: frozenset[str] = frozenset(),
     semantic: Callable[[JsonObject, str], None] | None = None,
 ) -> Callable[[JsonObject, str], None]:
-    """Factory for the plain operations: envelope + numeric + semantics."""
+    """Validator factory for the plain operations: envelope + numeric + semantics."""
 
     def validate(op: JsonObject, path: str) -> None:
         missing = required - set(op)
@@ -588,48 +571,36 @@ def _to_json_compatible(value: Any) -> Any:
         return [_to_json_compatible(v) for v in value]
     return value
 
-def _spec(name, required, semantic=None):
-    req = frozenset(required)
-    return _OperationSpec(
-        name, req, frozenset(),
-        _simple_op_validator(name, req, frozenset(), semantic),
-    )
-
-
-_OPERATION_SPECS: dict[str, _OperationSpec] = {
-    s.name: s
-    for s in [
-        _spec("clear", {"op", "id"}),
-        _spec("create", {"op", "id", "kind"}, _semantic_create),
-        _spec("set_props", {"op", "id", "props"}, _semantic_set_props),
-        _spec("set_prop", {"op", "id", "name", "value"}, _semantic_prop),
-        _spec("remove_prop", {"op", "id", "name"}, _semantic_prop),
-        _spec("listen", {"op", "id", "event", "handler"}, _semantic_event),
-        _spec("listen_latest", {"op", "id", "event", "handler"}, _semantic_event),
-        _spec("unlisten", {"op", "id", "event"}, _semantic_event),
-        _spec("insert_child", {"op", "parent", "child", "index"}),
-        _spec("move_child", {"op", "parent", "child", "index"}),
-        _spec("remove_child", {"op", "parent", "child"}),
-        _spec("remove", {"op", "id"}),
-        _spec(
-            "scroll_to",
-            {"op", "id", "offset_x", "offset_y", "animated"},
-            _semantic_scroll_to,
-        ),
-        _OperationSpec("motion_set_target", frozenset(), frozenset(), _validate_motion_operation),
-        _OperationSpec("motion_cancel", frozenset(), frozenset(), _validate_motion_operation),
-        _OperationSpec("motion_driver_set_target", frozenset(), frozenset(), _validate_motion_operation),
-        _OperationSpec("motion_driver_cancel", frozenset(), frozenset(), _validate_motion_operation),
-    ]
+_OPERATION_VALIDATORS: dict[str, Callable[[JsonObject, str], None]] = {
+    "clear": _simple_op_validator(frozenset({"op", "id"})),
+    "create": _simple_op_validator(frozenset({"op", "id", "kind"}), semantic=_semantic_create),
+    "set_props": _simple_op_validator(frozenset({"op", "id", "props"}), semantic=_semantic_set_props),
+    "set_prop": _simple_op_validator(frozenset({"op", "id", "name", "value"}), semantic=_semantic_prop),
+    "remove_prop": _simple_op_validator(frozenset({"op", "id", "name"}), semantic=_semantic_prop),
+    "listen": _simple_op_validator(frozenset({"op", "id", "event", "handler"}), semantic=_semantic_event),
+    "listen_latest": _simple_op_validator(frozenset({"op", "id", "event", "handler"}), semantic=_semantic_event),
+    "unlisten": _simple_op_validator(frozenset({"op", "id", "event"}), semantic=_semantic_event),
+    "insert_child": _simple_op_validator(frozenset({"op", "parent", "child", "index"})),
+    "move_child": _simple_op_validator(frozenset({"op", "parent", "child", "index"})),
+    "remove_child": _simple_op_validator(frozenset({"op", "parent", "child"})),
+    "remove": _simple_op_validator(frozenset({"op", "id"})),
+    "scroll_to": _simple_op_validator(
+        frozenset({"op", "id", "offset_x", "offset_y", "animated"}),
+        semantic=_semantic_scroll_to,
+    ),
+    "motion_set_target": _validate_motion_operation,
+    "motion_cancel": _validate_motion_operation,
+    "motion_driver_set_target": _validate_motion_operation,
+    "motion_driver_cancel": _validate_motion_operation,
 }
 
 
 def _validate_operation(op: JsonObject, *, path: str) -> None:
-    """Validate one operation through its registered spec — one dispatcher."""
+    """Validate one operation through its registered validator — one dispatcher."""
     name = op.get("op")
     if not isinstance(name, str):
         raise TypeError(f"{path}.op must be a string")
-    spec = _OPERATION_SPECS.get(name)
-    if spec is None:
+    validator = _OPERATION_VALIDATORS.get(name)
+    if validator is None:
         raise ValueError(f"{path} has unknown operation {name!r}")
-    spec.validator(op, path=path)
+    validator(op, path=path)

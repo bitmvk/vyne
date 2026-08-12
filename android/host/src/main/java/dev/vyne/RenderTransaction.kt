@@ -29,30 +29,6 @@ internal sealed interface RenderOperation {
         val name: String,
         val value: Any?,
     ) : RenderOperation
-    data class SetPropBatch(
-        val ids: IntArray,
-        val names: Array<String>,
-        val values: List<Any?>,
-    ) : RenderOperation {
-        override val logicalOperationCount: Int
-            get() = ids.size
-    }
-    data class SetStringPropBatch(
-        val ids: IntArray,
-        val name: String,
-        val values: Array<String>,
-    ) : RenderOperation {
-        override val logicalOperationCount: Int
-            get() = ids.size
-    }
-    data class SetContiguousStringPropBatch(
-        val firstId: Int,
-        val name: String,
-        val values: Array<String>,
-    ) : RenderOperation {
-        override val logicalOperationCount: Int
-            get() = values.size
-    }
     data class RemoveProp(val id: Int, val name: String) : RenderOperation
     data class Listen(
         val id: Int,

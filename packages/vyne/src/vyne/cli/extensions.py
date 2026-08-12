@@ -10,7 +10,7 @@ the directory name is the extension identity). Each extension contributes:
 - ``android/`` — Kotlin source root compiled into the app module.
 - ``res/`` (optional) — Android resource root.
 
-``vyne build`` regenerates one file per project (journaled, byte-identical
+``vyne build`` regenerates one file per project (atomic, byte-identical
 skip): ``ExtensionRegistrant.kt``, which calls each extension's
 ``register(context, registry)``. In a generated project it lands in the
 app's own java source set (the packaged host excludes its shipped default,
@@ -28,7 +28,6 @@ import tomllib
 from typing import Any
 
 from vyne.cli.config import validate_module
-from vyne.cli.generation import ConflictPolicy, PlanBuilder
 
 _FQN_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*\.([a-zA-Z_][a-zA-Z0-9_]*\.)*[a-zA-Z_][a-zA-Z0-9_]*$")
 REGISTRANT_RELATIVE = "ExtensionRegistrant.kt"
@@ -186,18 +185,17 @@ def registrant_target(project: Any) -> Path:
 
 
 def generate_extension_files(project: Any, extensions: list[Extension]) -> None:
-    """Journaled generation of the registrant.
+    """Regenerate the Kotlin registrant.
 
-    Written through the durable generation transaction; byte-identical
-    content skips the write (no churn on unchanged builds).
+    Byte-identical content is skipped (no churn on unchanged builds); a
+    changed registrant is written atomically via a temp sibling +
+    ``os.replace``.
     """
     registrant_path = registrant_target(project)
-    builder = PlanBuilder(project.root)
-    builder.add_file(
-        os.path.relpath(registrant_path, project.root),
-        registrant_content(extensions),
-        policy=ConflictPolicy.REPLACE,
-    )
-    plan = builder.preflight()
-    plan.apply()
-    plan.cleanup()
+    content = registrant_content(extensions).encode("utf-8")
+    if registrant_path.is_file() and registrant_path.read_bytes() == content:
+        return
+    registrant_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = registrant_path.with_name(f".{registrant_path.name}.tmp")
+    temp.write_bytes(content)
+    os.replace(temp, registrant_path)

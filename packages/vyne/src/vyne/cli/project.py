@@ -206,64 +206,6 @@ def find_project_root(start: Path | None = None) -> Path | None:
     return None
 
 
-@dataclass(frozen=True)
-class Issue:
-    """One expected inspection failure, with a stable machine-readable code."""
-
-    code: str
-    detail: str
-
-
-@dataclass(frozen=True)
-class ProjectInspection:
-    """The complete result of one repository inspection (design-pattern #10).
-
-    ``inspect`` never throws for expected discovery/TOML/config/path
-    failures — they are ``issues``.  Unexpected programming errors still
-    propagate.
-    """
-
-    project: Project | None
-    issues: tuple[Issue, ...] = ()
-    extensions: tuple[Any, ...] = ()
-
-
-class ProjectRepository:
-    """Repository facade: inspect a directory without throwing on
-    expected failures, so ``vyne doctor`` can always render something."""
-
-    def inspect(self, start: Path | None = None) -> ProjectInspection:
-        issues: list[Issue] = []
-        root = find_project_root(start)
-        if root is None:
-            issues.append(
-                Issue(
-                    code="no_project",
-                    detail=(
-                        "No Vyne project found. Run this inside a generated "
-                        "project or the framework checkout."
-                    ),
-                )
-            )
-            return ProjectInspection(project=None, issues=tuple(issues), extensions=())
-
-        project: Project | None = None
-        try:
-            project = load_project(root)
-        except RuntimeError as exc:
-            # Expected failures: bad TOML, bad config values, unrecognized
-            # root.  Type/Attribute/OS errors still propagate.
-            issues.append(Issue(code="project", detail=str(exc)))
-
-        extensions: tuple[Any, ...] = ()
-        try:
-            extensions = tuple(discover_extensions(root))
-        except RuntimeError as exc:
-            issues.append(Issue(code="extensions", detail=str(exc)))
-
-        return ProjectInspection(project=project, issues=tuple(issues), extensions=extensions)
-
-
 def load_project(start: Path | None = None) -> Project:
     root = find_project_root(start)
     if root is None:
@@ -326,9 +268,9 @@ def _load_framework_checkout(root: Path) -> Project:
     )
 
 
-def _discover_best_effort(root: Path) -> tuple[Any, ...]:
-    """Extension discovery inside project load never raises: the repository
-    layer records broken extensions as an Issue (design-pattern #10)."""
+def _discover_best_effort(root: Path) -> tuple[Extension, ...]:
+    """Extension discovery inside project load never raises: a broken
+    extension is reported by ``vyne doctor`` at inspection time."""
     try:
         return tuple(discover_extensions(root))
     except RuntimeError:

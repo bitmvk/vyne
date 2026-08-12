@@ -18,7 +18,6 @@ import dev.vyne.generated.registerAppSurfaces
 internal object AppBootstrap {
     private val lock = Any()
     @Volatile private var sharedRegistry: ElementRegistry? = null
-    @Volatile private var registered = false
 
     /** Build the process registry and populate the surface registry once. */
     fun ensureRegistered(context: Context): ElementRegistry {
@@ -28,12 +27,7 @@ internal object AppBootstrap {
             val registry = defaultRegistry(context.applicationContext)
             sharedRegistry = registry
             registerAppSurfaces(RenderSurfaceRegistry)
-            registered = true
             return registry
         }
     }
-
-    /** True once the process registry has been built (tests). */
-    val isRegistered: Boolean
-        get() = registered
 }

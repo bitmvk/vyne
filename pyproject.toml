@@ -4,7 +4,6 @@ version = "0.1.0a1"
 description = "Python-authored native Android UI framework."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["tomlkit>=0.12", "packaging>=24"]
 
 [project.scripts]
 vyne = "vyne.cli.main:main"

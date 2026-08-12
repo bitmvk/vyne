@@ -8,7 +8,7 @@ Regenerate with:
 Source of truth: ``vyne.spec.schema_v2``.
 """
 
-# schema-v2 source hash: 878f4334d5d52482
+# schema-v2 source hash: 331b4e49a3a702ed
 
 from typing import Any, Literal, TypeAlias, TypedDict, Unpack
 

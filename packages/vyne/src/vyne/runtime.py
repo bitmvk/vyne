@@ -76,7 +76,7 @@ from typing import TYPE_CHECKING, Any
 from weakref import ReferenceType, ref
 
 from vyne.async_runtime import AsyncRuntimeDispatcher
-from vyne._effects import NativeViewEffect
+from vyne._effects import ScrollToEffect
 from vyne.elements import Element, event_name_for_prop, normalize_child
 from vyne.motion import (
     Cancel,
@@ -564,8 +564,8 @@ class Runtime:
         self._current_event: Event | None = None
         self.latest_commit: JsonObject | None = None
         self._anim_pending: list[MotionCommand] = []
-        self._effect_pending: list[NativeViewEffect] = []
-        self._effect_checkpoint: tuple[NativeViewEffect, ...] | None = None
+        self._effect_pending: list[ScrollToEffect] = []
+        self._effect_checkpoint: tuple[ScrollToEffect, ...] | None = None
         self._next_animation_id = 1
         self._animations: dict[int, _AnimationRegistration] = {}
         self._animation_checkpoint: _AnimationCheckpoint | None = None
@@ -2226,10 +2226,10 @@ class Runtime:
         staged_targets.add(target)
         bindings[target] = _ImperativeBindingIntent(target, value, anchor_ref)
 
-    def _queue_native_effect(self, effect: NativeViewEffect) -> None:
+    def _queue_native_effect(self, effect: ScrollToEffect) -> None:
         """Queue one accepted view effect for the shared commit pipeline."""
-        if not isinstance(effect, NativeViewEffect):
-            raise TypeError("effect must implement NativeViewEffect")
+        if not isinstance(effect, ScrollToEffect):
+            raise TypeError("effect must be a ScrollToEffect")
         if self._phase != "event":
             raise RuntimeError(
                 "Native effects can only be queued from event handlers or "

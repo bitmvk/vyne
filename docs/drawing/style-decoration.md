@@ -30,8 +30,9 @@ warning = title + Style(text_color="#dc2626")
 | `align_items`, `justify_content` | layout (containers) |
 | `decoration` | handled separately (below) |
 
-Unsupported fields reject with a field path: `gap`, `size`, `flex`,
-`flex_grow`, `flex_shrink`, `flex_basis`, `align_self`.
+Removed Style fields (`gap`, `size`, `flex`, `flex_grow`, `flex_shrink`,
+`flex_basis`, `align_self`) are not part of the API; a raw dict carrying
+them rejects with an unknown-field path.
 
 ## Decoration
 
@@ -44,7 +45,6 @@ Decoration.rectangle(
     corners=8,
     shadow=Shadow(elevation=2),
     ripple=Ripple(color="#22000000"),
-    clip=True,
 )
 ```
 
@@ -72,8 +72,13 @@ The first decoration tier maps to:
 - Shape oval / line / ring
 - `translation_z`
 - unbounded ripple
-- `Decoration.clip` — needs a native outline slot; planned but not
-  implemented
+- `Decoration.clip` — removed from the API; needs a native outline slot,
+  planned but not implemented
+
+The removed constructors and fields (`Fill.linear_gradient`/`radial_gradient`/
+`sweep_gradient`, `Stroke.dash_width`/`dash_gap`, `Shape.oval`/`line`/`ring`,
+`Shadow.translation_z`, `Ripple.bounded`, `Decoration.clip`) no longer exist
+on the Python types; raw dicts carrying those keys still reject at lowering.
 
 ## Precedence
 
@@ -83,9 +88,8 @@ The lowering merge decides who wins:
 kind defaults < Style/Decoration tier < explicit direct props
 ```
 
-Explicit props always beat Style; Style beats defaults. Equal values
-collapse; the type-aware merge never lets `1 == True` hide a malformed
-value.
+Explicit props always beat Style; Style beats defaults. The ordered merge
+never lets `1 == True` hide a malformed value.
 
 See [lowering.md](../framework/lowering.md).
 

@@ -60,14 +60,16 @@ One explicit backpressure gate for everything entering Python.
 
 ## DirectRenderHost
 
-The typed call surface Python sees (see
+The small direct-call surface Python sees (see
 [framework/transport.md](../framework/transport.md)).
 
-- calls arrive on the Python executor and only build an immutable
-  `RenderTransaction`
-- `finishCommit()` posts one transaction to the UI thread; the Renderer
+- calls arrive on the Python executor; each logical commit enters as one
+  compact JSON document through `commitJson` and is decoded into an
+  immutable `RenderTransaction`
+- `commitJson` posts one transaction to the UI thread; the Renderer
   applies it
-- `abortCommit()` discards the transaction on error
+- a decode failure discards the transaction and propagates to Python, so
+  the framework rolls back instead of applying a partial commit
 - `setSessionId()` publishes the Python session uuid before the first
   commit, so receipts are session-scoped
 - `extensionKinds()` answers the registry query

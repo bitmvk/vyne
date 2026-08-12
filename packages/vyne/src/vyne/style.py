@@ -22,69 +22,18 @@ class PropsMixin:
 
 @dataclass(frozen=True)
 class Fill(PropsMixin):
-    kind: str
+    kind: str = "solid"
     color: str | None = None
-    start_color: str | None = None
-    center_color: str | None = None
-    end_color: str | None = None
-    angle: int | None = None
-    radius: int | float | None = None
 
     @staticmethod
     def solid(color: str) -> "Fill":
         return Fill(kind="solid", color=color)
-
-    @staticmethod
-    def linear_gradient(
-        *,
-        start_color: str,
-        end_color: str,
-        center_color: str | None = None,
-        angle: int = 0,
-    ) -> "Fill":
-        return Fill(
-            kind="linear_gradient",
-            start_color=start_color,
-            center_color=center_color,
-            end_color=end_color,
-            angle=angle,
-        )
-
-    @staticmethod
-    def radial_gradient(
-        *,
-        center_color: str,
-        end_color: str,
-        radius: int | float,
-    ) -> "Fill":
-        return Fill(
-            kind="radial_gradient",
-            center_color=center_color,
-            end_color=end_color,
-            radius=radius,
-        )
-
-    @staticmethod
-    def sweep_gradient(
-        *,
-        start_color: str,
-        end_color: str,
-        center_color: str | None = None,
-    ) -> "Fill":
-        return Fill(
-            kind="sweep_gradient",
-            start_color=start_color,
-            center_color=center_color,
-            end_color=end_color,
-        )
 
 
 @dataclass(frozen=True)
 class Stroke(PropsMixin):
     color: str
     width: int | float = 1
-    dash_width: int | float | None = None
-    dash_gap: int | float | None = None
 
 
 @dataclass(frozen=True)
@@ -131,37 +80,15 @@ class Shape(PropsMixin):
     ) -> "Shape":
         return Shape(kind="rectangle", fill=fill, stroke=stroke, corners=corners)
 
-    @staticmethod
-    def oval(
-        *,
-        fill: Fill | str | None = None,
-        stroke: Stroke | None = None,
-    ) -> "Shape":
-        return Shape(kind="oval", fill=fill, stroke=stroke)
-
-    @staticmethod
-    def line(*, stroke: Stroke) -> "Shape":
-        return Shape(kind="line", stroke=stroke)
-
-    @staticmethod
-    def ring(
-        *,
-        fill: Fill | str | None = None,
-        stroke: Stroke | None = None,
-    ) -> "Shape":
-        return Shape(kind="ring", fill=fill, stroke=stroke)
-
 
 @dataclass(frozen=True)
 class Shadow(PropsMixin):
     elevation: int | float = 0
-    translation_z: int | float | None = None
 
 
 @dataclass(frozen=True)
 class Ripple(PropsMixin):
     color: str
-    bounded: bool = True
 
 
 @dataclass(frozen=True)
@@ -169,7 +96,6 @@ class Decoration(PropsMixin):
     shape: Shape | None = None
     shadow: Shadow | None = None
     ripple: Ripple | None = None
-    clip: bool | None = None
 
     @staticmethod
     def rectangle(
@@ -179,13 +105,11 @@ class Decoration(PropsMixin):
         corners: CornerRadius | int | float | None = None,
         shadow: Shadow | None = None,
         ripple: Ripple | None = None,
-        clip: bool | None = None,
     ) -> "Decoration":
         return Decoration(
             shape=Shape.rectangle(fill=fill, stroke=stroke, corners=corners),
             shadow=shadow,
             ripple=ripple,
-            clip=clip,
         )
 
 
@@ -202,15 +126,8 @@ class Style(PropsMixin):
     background_color: str | None = None
     font_size: int | float | None = None
     padding: int | float | None = None
-    gap: int | float | None = None
     width: int | float | None = None
     height: int | float | None = None
-    size: int | float | None = None
-    flex: int | float | None = None
-    flex_grow: int | float | None = None
-    flex_shrink: int | float | None = None
-    flex_basis: int | float | str | None = None
-    align_self: str | None = None
     align_items: str | None = None
     justify_content: str | None = None
     decoration: Decoration | None = None

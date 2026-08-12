@@ -1,7 +1,7 @@
 # The CLI
 
 Source: `vyne/cli/` (main.py, new.py, project.py, config.py, android.py,
-doctor.py, dependencies.py, extension_new.py).
+doctor.py, extension_new.py).
 
 The CLI is the developer-facing tool for creating, building, and running
 Vyne apps on Android.
@@ -10,8 +10,7 @@ Vyne apps on Android.
 
 | command | purpose |
 |---|---|
-| `vyne new <name>` | scaffold a new project directory |
-| `vyne new .` | initialize an existing uv project |
+| `vyne new <name>` | scaffold a new project directory (must be empty unless `--force`) |
 | `vyne doctor` | check build prerequisites |
 | `vyne build` | assemble the APK via Gradle |
 | `vyne install` | build + adb install |
@@ -45,9 +44,9 @@ android/              generated Android Gradle host project
 tests/                app-level Python tests
 ```
 
-- an existing `pyproject.toml` is preserved and updated with a `vyne`
-  dependency if needed
-- generated files refuse to overwrite unless `--force` is passed
+- generation targets an empty directory; a non-empty target is refused
+  unless `--force` replaces it entirely
+- generated files are never merged or edited in place
 - the Android Gradle build uses Chaquopy to package Python 3.14, so
   generated projects need no separately downloaded CPython prefix
 - `vyne.toml` records the packaged base-project paths, so creating a
@@ -74,14 +73,8 @@ checkout).
 - project structure and configuration
 - extension validity
 
-## Dependencies
-
-`vyne/cli/dependencies.py` manages the `vyne` dependency entry in a
-project's `pyproject.toml` (add/update/remove), keeping the project
-self-contained.
-
 ## Related
 
 - [generation.md](generation.md) — how scaffolding works
 - [testing.md](../testing/testing.md) — what `vyne test` runs
-- [../extensions/extensions.md](../extensions/extensions.md) — extension commands
+- [../extensions.md](../extensions.md) — extension commands

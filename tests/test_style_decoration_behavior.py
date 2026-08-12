@@ -14,11 +14,10 @@ from __future__ import annotations
 
 import unittest
 
-from vyne.values import FrozenMap
 from vyne.lowering import lower_element, CanonicalElement
-from vyne.elements import Box, Text, Layout
+from vyne.elements import Box, Text
 from vyne.style import (
-    Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple, Shape,
+    Style, Decoration, Stroke, CornerRadius, Shadow, Ripple,
 )
 
 
@@ -29,14 +28,14 @@ class UnsupportedFieldRejectionTests(unittest.TestCase):
         """Decoration.clip must reject since clipping is not yet implemented
         as a canonical slot."""
         with self.assertRaises(ValueError) as ctx:
-            lower_element(Box(decoration=Decoration.rectangle(clip=True)))
+            lower_element(Box(decoration={"clip": True}))
         self.assertIn("clip", str(ctx.exception).lower(),
             "Error must mention 'clip'")
 
     def test_decoration_clip_false_also_rejects(self):
         """Decoration.clip=False also rejects — the field is not supported."""
         with self.assertRaises(ValueError):
-            lower_element(Box(decoration=Decoration.rectangle(clip=False)))
+            lower_element(Box(decoration={"clip": False}))
 
     def test_unknown_style_dict_field_rejects(self):
         """Unknown fields in a raw style dict must reject."""
@@ -59,38 +58,38 @@ class UnsupportedFieldRejectionTests(unittest.TestCase):
         """Gradient fills are not yet supported."""
         with self.assertRaises(ValueError) as ctx:
             lower_element(Box(decoration=Decoration.rectangle(
-                fill=Fill.linear_gradient(start_color="#000", end_color="#fff"))))
+                fill={"kind": "linear_gradient", "start_color": "#000", "end_color": "#fff"})))
         self.assertIn("gradient", str(ctx.exception).lower())
 
     def test_dashed_stroke_rejects(self):
         """Dashed strokes in Decoration are not yet supported."""
         with self.assertRaises(ValueError) as ctx:
             lower_element(Box(decoration=Decoration.rectangle(
-                stroke=Stroke(color="#000", dash_width=4, dash_gap=2))))
+                stroke={"color": "#000", "dash_width": 4, "dash_gap": 2})))
         self.assertIn("dash", str(ctx.exception).lower())
 
     def test_oval_shape_rejects(self):
         """Non-rectangle shapes are not yet supported."""
         with self.assertRaises(ValueError) as ctx:
             lower_element(Box(decoration=Decoration(
-                shape=Shape.oval(fill="#FF0000"))))
+                shape={"kind": "oval", "fill": "#FF0000"})))
         self.assertIn("oval", str(ctx.exception).lower())
 
     def test_unbounded_ripple_rejects(self):
         """Unbounded ripple is not yet supported."""
         with self.assertRaises(ValueError):
             lower_element(Box(decoration=Decoration.rectangle(
-                ripple=Ripple(color="#40000000", bounded=False))))
+                ripple={"color": "#40000000", "bounded": False})))
 
     def test_translation_z_rejects(self):
         """Shadow.translation_z is not yet supported."""
         with self.assertRaises(ValueError) as ctx:
             lower_element(Box(decoration=Decoration.rectangle(
-                shadow=Shadow(elevation=4, translation_z=10))))
+                shadow={"elevation": 4, "translation_z": 10})))
         self.assertIn("translation_z", str(ctx.exception).lower())
 
     def test_unsupported_style_fields_reject(self):
-        """Unsupported Style fields (gap, size, flex, etc.) reject."""
+        """Removed Style fields (gap, size, flex, etc.) reject as unknown."""
         for bad_field, bad_val in [
             ("gap", 10),
             ("flex", 1),
@@ -100,7 +99,7 @@ class UnsupportedFieldRejectionTests(unittest.TestCase):
         ]:
             with self.subTest(field=bad_field):
                 with self.assertRaises(ValueError):
-                    lower_element(Box(style=Style(**{bad_field: bad_val})))
+                    lower_element(Box(style={bad_field: bad_val}))
 
     def test_size_shorthand_rejects(self):
         """size shorthand is not yet supported."""

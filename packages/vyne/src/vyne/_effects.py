@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Protocol, runtime_checkable
 
 from vyne.protocol import JsonObject, OP_SCROLL_TO
 from vyne.refs import ViewHandle
@@ -22,19 +21,6 @@ def _finite_non_negative(value: object, *, name: str) -> float:
     if not math.isfinite(result) or result < 0:
         raise ValueError(f"{name} must be a finite non-negative number")
     return result
-
-
-@runtime_checkable
-class NativeViewEffect(Protocol):
-    """A mechanical native command addressed to one accepted view."""
-
-    @property
-    def target(self) -> ViewHandle: ...
-
-    @property
-    def expected_kind(self) -> str: ...
-
-    def to_wire_op(self) -> JsonObject: ...
 
 
 @dataclass(frozen=True)

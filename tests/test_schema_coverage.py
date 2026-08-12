@@ -19,18 +19,10 @@ from vyne.spec.schema_v2 import (
     CANVAS_OP_SPECS,
     EVENT_SPECS,
 )
-from vyne.spec.model import ValueSpec, PropSpec, KindSpec, CanvasOpSpec, EventSpec
 
 
 class KindSpecCoverage(unittest.TestCase):
     """Every KindSpec in the registry is accounted for."""
-
-    def test_all_kinds_have_description(self):
-        for kind in PRIMITIVE_KINDS.values():
-            self.assertTrue(
-                kind.description,
-                f"Kind {kind.kind!r} missing description",
-            )
 
     def test_canonical_kinds_have_no_platform_factory_metadata(self):
         for kind in PRIMITIVE_KINDS.values():

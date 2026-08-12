@@ -133,7 +133,7 @@ animation), threading model, and repository layout — one file per concern.
 
 ## Bundled Showcase
 
-Running `uv run vyne run` from this checkout launches **Vyne Lab**. Its four
+Running `uv run vyne run` from this checkout launches **Vyne Lab**. Its six
 tabs exercise the framework as a real application:
 
 - **Motion** — declarative multi-property animation, native springs, animated
@@ -146,6 +146,11 @@ tabs exercise the framework as a real application:
   corners, shadows, ripple state, typography, and explicit-prop precedence.
 - **Controls** — controlled text input, checkbox, switch, chips, slider,
   progress, segmented buttons, and Material button variants.
+- **Lists** — 30,000 static horizontal items plus 30,000 dynamic keyed rows
+  with add, remove, and reverse operations, both on the generic virtual-list
+  engine.
+- **Material** — one live example of every public Material widget constructor,
+  grouped into a scrollable catalog.
 
 The root uses `safe_area=True`; native system insets are added to its explicit
 padding and updated without a Python round trip. `safe_area` is available on

@@ -2,6 +2,7 @@ package dev.vyne
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.RectF
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -929,6 +930,77 @@ class RendererSurfaceInstrumentationTest {
             assertEquals(null, renderer.viewForTest(7))
             assertEquals(null, renderer.viewForTest(8))
             assertEquals(1, renderer.recycledViewCount)
+        } finally {
+            renderer.dispose()
+        }
+    }
+
+    @Test
+    fun roundedScrollClipTracksTheVisibleViewport() {
+        val renderer = Renderer(context, {})
+        try {
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyDirectTransaction(
+                    RenderTransaction(
+                        1,
+                        listOf(
+                            RenderOperation.Create(1, "Scroll"),
+                            RenderOperation.SetProps(
+                                1,
+                                mapOf(
+                                    "width" to 100,
+                                    "height" to 100,
+                                    "corner_radius_top_left" to 12,
+                                    "corner_radius_top_right" to 12,
+                                    "corner_radius_bottom_left" to 12,
+                                    "corner_radius_bottom_right" to 12,
+                                ),
+                            ),
+                            RenderOperation.Create(2, "Box"),
+                            RenderOperation.SetProps(
+                                2,
+                                mapOf(
+                                    "width" to 100,
+                                    "height" to 300,
+                                    "_virtual_content_width" to 100,
+                                    "_virtual_content_height" to 300,
+                                ),
+                            ),
+                            RenderOperation.Create(3, "Box"),
+                            RenderOperation.SetProps(
+                                3,
+                                mapOf(
+                                    "width" to 100,
+                                    "height" to 100,
+                                    "translation_y" to 200,
+                                    "background_color" to "#FF0000",
+                                ),
+                            ),
+                            RenderOperation.InsertChild(2, 3, 0),
+                            RenderOperation.InsertChild(1, 2, 0),
+                            RenderOperation.InsertChild(0, 1, 0),
+                        ),
+                    ),
+                ),
+            )
+
+            val density = renderer.root.resources.displayMetrics.density
+            val extent = (100 * density).toInt()
+            renderer.root.measure(
+                View.MeasureSpec.makeMeasureSpec(extent, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(extent, View.MeasureSpec.EXACTLY),
+            )
+            renderer.root.layout(0, 0, extent, extent)
+            val scroll = renderer.root.getChildAt(0) as RoundedScrollView
+            val bitmap = Bitmap.createBitmap(extent, extent, Bitmap.Config.ARGB_8888)
+            scroll.scrollTo(0, (200 * density).toInt())
+            assertEquals((200 * density).toInt(), scroll.scrollY)
+            scroll.draw(Canvas(bitmap))
+            val clipBounds = RectF()
+            scroll.clipPath.computeBounds(clipBounds, true)
+            assertEquals(scroll.scrollY.toFloat(), clipBounds.top, 0.5f)
+            assertEquals((scroll.scrollY + scroll.height).toFloat(), clipBounds.bottom, 0.5f)
         } finally {
             renderer.dispose()
         }

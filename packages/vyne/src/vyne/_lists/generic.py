@@ -4,7 +4,7 @@ This module implements the ``VirtualList`` engine behind the public
 ``vyne.lists`` surface.  It composes positioned realized cells with ordinary
 Vyne primitives — a ``Scroll`` (or ``_horizontal_scroll``) hosting a ``Box``
 canonical Box whose children are keyed, sized, and translated cell wrappers —
-and reuses the existing Runtime seams exactly like the fixed engine: staged
+and reuses the Runtime seams established by the old fixed engine: staged
 imperative bindings, native effects, one-in-flight commits, rollback, reset,
 and acknowledgements.
 
@@ -553,7 +553,16 @@ def render_generic_virtual_list(spec: VirtualListSpec) -> Element:
         )
     )
     observed = window_state.value
-    if observed.viewport is None or observed.actual_viewport is None:
+    if (
+        observed.axis != axis
+        or observed.viewport is None
+        or observed.actual_viewport is None
+    ):
+        # A flipped axis invalidates the retained window exactly like a fresh
+        # occurrence: the previous axis's viewport geometry cannot be reused
+        # on the new axis, and the controller cache already resets on axis
+        # change (``_accept_runtime_binding``).  Start from the declared
+        # pre-metrics viewport instead.
         actual, planning = _initial_viewports(spec)
     else:
         actual = observed.actual_viewport
@@ -1202,7 +1211,7 @@ def _capped_planning_rect(
 
     A backward fling may reach at most ``cap`` viewports behind the actual
     viewport and a forward fling at most ``cap`` ahead; ``0`` stays
-    unbounded, mirroring the fixed engine's symmetric cap.
+    unbounded, preserving the old fixed engine's symmetric cap.
     """
     if cap <= 0 or _main_extent(actual, axis) <= 0:
         return projected

@@ -356,16 +356,13 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=None,
-        description="Generic container with frame (absolute + z-order) layout.",
     ),
     "Layout": KindSpec(
         kind="Layout",
         allowed_children=frozenset(
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
-        required=frozenset({"orientation"}),
         max_children=None,
-        description="Linear layout container (horizontal or vertical).",
     ),
     "Scroll": KindSpec(
         kind="Scroll",
@@ -373,7 +370,6 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=1,
-        description="Vertical scroll container; at most one direct child.",
     ),
     "HorizontalScroll": KindSpec(
         kind="HorizontalScroll",
@@ -381,32 +377,26 @@ PRIMITIVE_KINDS: dict[str, KindSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         max_children=1,
-        description="Private horizontal scroll container; at most one direct child.",
     ),
     "Text": KindSpec(
         kind="Text",
         max_children=0,
-        description="Leaf text display widget.",
     ),
     "TextInput": KindSpec(
         kind="TextInput",
         max_children=0,
-        description="Editable text input widget with IME support.",
     ),
     "Image": KindSpec(
         kind="Image",
         max_children=0,
-        description="Image display widget.",
     ),
     "Path": KindSpec(
         kind="Path",
         max_children=0,
-        description="Custom Path widget rendering SVG-like path commands.",
     ),
     "Canvas": KindSpec(
         kind="Canvas",
         max_children=0,
-        description="Custom Canvas widget rendering a display list of draw operations.",
     ),
 }
 
@@ -614,13 +604,6 @@ _POINTER_PAYLOAD_SPECS: dict[str, ValueSpec] = {
     "gesture_id": ValueSpec(type_name="int", non_negative=True),
 }
 _POINTER_PAYLOAD_FIELDS = frozenset(_POINTER_PAYLOAD_SPECS)
-_POINTER_PAYLOAD_WIRE_NAMES = {
-    "x": "x", "y": "y", "pointer_id": "pointerId",
-    "event_time": "eventTime", "pressure": "pressure",
-    "size": "size", "tool_type": "toolType", "source": "source",
-    "down_x": "downX", "down_y": "downY", "down_time": "downTime",
-    "gesture_id": "gestureId",
-}
 
 _LAYOUT_METRICS_PAYLOAD_SPECS: dict[str, ValueSpec] = {
     "x": _finite_number,
@@ -673,7 +656,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
                 {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
             ),
             payload_specs=_POINTER_PAYLOAD_SPECS,
-            payload_wire_names=_POINTER_PAYLOAD_WIRE_NAMES,
         )
         for event_name in (
             "pointer_down", "pointer_move", "pointer_up", "pointer_cancel"
@@ -687,7 +669,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
             "has_focus": _bool,
         },
         controlled_props={"has_focus": "focused"},
-        payload_wire_names={"has_focus": "hasFocus"},
     ),
     "text_change": EventSpec(
         name="text_change",
@@ -697,7 +678,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
             "text": _string,
         },
         controlled_props={"text": "text"},
-        payload_wire_names={"text": "text"},
     ),
     "editor_action": EventSpec(
         name="editor_action",
@@ -707,7 +687,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
             "action_id": ValueSpec(type_name="int", non_negative=True),
             "text": _string,
         },
-        payload_wire_names={"action_id": "actionId", "text": "text"},
     ),
     "accessibility_progress": EventSpec(
         name="accessibility_progress",
@@ -718,7 +697,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
             "value": _non_negative_number,
         },
         controlled_props={"value": "accessibility_range_current"},
-        payload_wire_names={"value": "value"},
     ),
     # Internal renderer observations used by the Python-owned virtual-list
     # controller. These names are protocol contracts, not a finalized public
@@ -733,7 +711,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
             {"Box", "Layout", "Scroll", "HorizontalScroll", "Text", "TextInput", "Image", "Path", "Canvas"}
         ),
         payload_specs=_LAYOUT_METRICS_PAYLOAD_SPECS,
-        payload_wire_names={name: name for name in _LAYOUT_METRICS_PAYLOAD_SPECS},
         public_callback=False,
     ),
     "scroll_metrics": EventSpec(
@@ -741,7 +718,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
         payload_fields=frozenset(_SCROLL_METRICS_PAYLOAD_SPECS),
         applies_to=frozenset({"Scroll", "HorizontalScroll"}),
         payload_specs=_SCROLL_METRICS_PAYLOAD_SPECS,
-        payload_wire_names={name: name for name in _SCROLL_METRICS_PAYLOAD_SPECS},
         public_callback=False,
     ),
     "scroll_seek": EventSpec(
@@ -749,7 +725,6 @@ EVENT_SPECS: dict[str, EventSpec] = {
         payload_fields=frozenset(_SCROLL_SEEK_PAYLOAD_SPECS),
         applies_to=frozenset({"Scroll", "HorizontalScroll"}),
         payload_specs=_SCROLL_SEEK_PAYLOAD_SPECS,
-        payload_wire_names={name: name for name in _SCROLL_SEEK_PAYLOAD_SPECS},
         public_callback=False,
     ),
 }

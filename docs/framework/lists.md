@@ -7,12 +7,13 @@
 
 ## `List` — fixed extent
 
-`List` renders a fixed-extent virtualized list: only the items inside the
-selected window are composed, everything else is a blank spacer. The native
-host keeps scrolling free and reports where the in-flight gesture is heading;
-Python plans one contiguous window from the current viewport through the
-projected target, so fast flings render their path instead of chasing the
-finger.
+`List` renders a fixed-extent virtualized list on the generic engine: it is a
+convenience wrapper around `VirtualList` with the built-in `FixedLinearLayout`.
+Only the cells inside the selected window are composed, positioned inside a
+canonical content `Box` by `translation_x`/`y`. The native host keeps scrolling
+free and reports where the in-flight gesture is heading; Python plans one
+contiguous window from the current viewport through the projected target, so
+fast flings render their path instead of chasing the finger.
 
 ```python
 from vyne import List, ListController
@@ -110,9 +111,9 @@ Behavior notes specific to `VirtualList`:
   rejected commit cannot leak into a later command;
 
 `ListController` drives both `List` and `VirtualList` with the same API
-(`scroll_to_offset`, `scroll_to_index`, `scroll_to_key`). It owns the fixed
-and generic private engines and dispatches to whichever one is mounted; a
-controller bound to two mounted lists raises clearly on every command.
+(`scroll_to_offset`, `scroll_to_index`, `scroll_to_key`). It owns the private
+generic engine and dispatches every command to the mounted list; a controller
+bound to two mounted lists raises clearly on every command.
 
 `scroll_to_key` never scans the source: a plain `Sequence` with default index
 keys resolves in O(1), an explicit `key_for_item` consults the key registry
@@ -178,9 +179,9 @@ numeric main-axis size.
 ## Behavior notes
 
 - The native host clamps actual and projected offsets to its current content
-  range. A fast fling may briefly show spacer content until Python publishes
-  the window, but the projected path is pre-rendered and view recycling keeps
-  the mount cheap.
+  range. A fast fling may briefly show the previous window until Python
+  publishes the destination cells, but the projected path is pre-rendered and
+  view recycling keeps the mount cheap.
 - Cell views (`Box`, `Layout`, `Text`) are recycled by the host: removed
   cells return to a pool and new cells reuse the exact view instances, with
   stale props reset only when the new cell does not set them.
@@ -205,18 +206,15 @@ numeric main-axis size.
 
 ## Current scope
 
-### `List` (fixed extent)
+### `List` (fixed extent, generic engine)
 
-- fixed item extent
-- vertical and horizontal axes
-- windowed mount/unmount
-- keyed reconciliation with index fallback
-- native fling/drag projection with a render-ahead cap
-- transactional offset/index/key scrolling
-- dynamic sequence updates
-
-Not implemented: variable item extents, sections or multiple columns,
-headers/footers/separators, sticky items, refresh controls.
+`List` renders a fixed-extent window through `VirtualList` with
+`FixedLinearLayout`: the layout is O(1) per offset-to-index query and the
+window covers the projected span plus overscan. It inherits the generic
+engine's scope: fixed linear extents on both axes, windowed mount/unmount,
+keyed reconciliation with index fallback, native fling/drag projection with a
+render-ahead cap, transactional offset/index/key scrolling, and dynamic
+sequence updates.
 
 ### `VirtualList` (generic)
 

@@ -1,7 +1,7 @@
 """Canonical immutable value types for Vyne.
 
 Provides FrozenMap (an immutable, hashable ordered mapping with string-only
-keys), recursive freeze/thaw, and exact scalar rules for colors, dimensions,
+keys), recursive freeze, and exact scalar rules for colors, dimensions,
 dash arrays, and finite numeric values that cross the Pyothon/native boundary.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import ItemsView, KeysView, Mapping, ValuesView
+from collections.abc import Mapping
 from dataclasses import is_dataclass
 from typing import Any, Iterator
 
@@ -95,24 +95,6 @@ class FrozenMap(Mapping[str, Any]):
     def __iter__(self) -> Iterator[str]:
         return iter(self._keys)
 
-    def keys(self) -> KeysView[str]:  # type: ignore[override]
-        return KeysView(self)
-
-    def values(self) -> ValuesView[Any]:  # type: ignore[override]
-        return ValuesView(self)
-
-    def items(self) -> ItemsView[str, Any]:  # type: ignore[override]
-        return ItemsView(self)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._keys
-
     def __eq__(self, other: object) -> bool:
         if isinstance(other, FrozenMap):
             if len(self) != len(other):
@@ -148,23 +130,6 @@ class FrozenMap(Mapping[str, Any]):
         new_items.append((key, value))
         return FrozenMap(new_items)
 
-    def without(self, key: str) -> FrozenMap:
-        """Return a new FrozenMap with *key* removed."""
-        if key not in self:
-            return self
-        return FrozenMap([(k, v) for k, v in self.items() if k != key])
-
-    @staticmethod
-    def from_dict(d: Mapping[str, Any], *, deep: bool = False) -> FrozenMap:
-        """Create a FrozenMap from a plain dict.
-
-        When *deep* is True, nested dicts and lists are recursively frozen
-        so the entire value tree is immutable (MODEL-03).
-        """
-        if deep:
-            return FrozenMap((k, freeze(v)) for k, v in d.items())
-        return FrozenMap(d.items())
-
 
 def _make_hashable(value: Any) -> Any:
     """Recursively convert a value to something hashable."""
@@ -178,7 +143,7 @@ def _make_hashable(value: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Recursive freeze / thaw
+# Recursive freeze
 # ---------------------------------------------------------------------------
 
 def freeze(value: Any) -> Any:
@@ -226,28 +191,11 @@ def freeze(value: Any) -> Any:
     )
 
 
-def thaw(value: Any) -> Any:
-    """Recursively convert an immutable structure back to mutable Python objects.
-
-    - FrozenMap → dict (recurse on values)
-    - tuple → list (recurse on items)
-    - str, int, float, bool, None → pass through
-    """
-    if isinstance(value, FrozenMap):
-        return {k: thaw(v) for k, v in value.items()}
-    if isinstance(value, tuple):
-        return [thaw(v) for v in value]
-    return value
-
-
 # ---------------------------------------------------------------------------
 # Exact scalar rules
 # ---------------------------------------------------------------------------
 
 _COLOR_HEX_RE = re.compile(r"^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$")
-
-# Known dimension special tokens for later protocol use.
-_DIMENSION_TOKENS = frozenset({"wrap_content", "match_parent"})
 
 
 def is_valid_color(value: Any) -> bool:
@@ -307,18 +255,3 @@ def is_valid_dash_array(value: Any) -> bool:
     if len(value) % 2 != 0:
         return False
     return all(is_finite_number(v) and v > 0 for v in value)
-
-
-def validate_dash_array(value: Any, *, name: str = "dash") -> tuple[float | int, ...]:
-    """Raise if *value* is not a valid canonical dash array.
-
-    Empty tuple is accepted as a valid "no dash" state.
-    """
-    if not isinstance(value, tuple):
-        raise TypeError(f"{name} must be a tuple, got {type(value).__name__}")
-    if len(value) % 2 != 0:
-        raise ValueError(f"{name} must have even length, got {len(value)}")
-    for i, v in enumerate(value):
-        if not is_finite_number(v) or v <= 0:
-            raise ValueError(f"{name}[{i}] must be a positive finite number, got {v}")
-    return value

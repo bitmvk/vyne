@@ -132,13 +132,6 @@ def public_events(schema) -> frozenset[str]:
     """Public ``on_<name>`` callbacks; internal renderer observations stay off."""
     return frozenset(name for name, spec in schema.EVENT_SPECS.items() if spec.public_callback)
 
-def required_without_default(schema, kind_spec) -> frozenset[str]:
-    """Required prop names that lack a schema default (truly mandatory)."""
-    return frozenset(
-        name for name in kind_spec.required
-        if schema.ALL_PROPS.get(name) is not None and schema.ALL_PROPS[name].default is None
-    )
-
 def build_model(schema):
     """Derive (hash, shared, container_only, widget_fields, widget_required,
     containers) typing surfaces from the schema."""
@@ -184,21 +177,9 @@ def build_model(schema):
         }
         fields.update(_EXTRA_CONSTRUCTOR_PROPS.get(constructor, {}))
         widget_fields[constructor] = fields
-        widget_required[constructor] = required_without_default(
-            schema, schema.PRIMITIVE_KINDS[kind]
-        )
-
-    # Required props in the shared/container surface cannot express
-    # ``Required[...]`` through TypedDict inheritance, so refuse to generate.
-    unrenderable = set().union(
-        *(required_without_default(schema, spec) for spec in schema.PRIMITIVE_KINDS.values())
-    ) & (shared | container_only)
-    if unrenderable:
-        raise ValueError(
-            "Cannot safely render Required[...] for shared/container-only props "
-            f"{sorted(unrenderable)}: give the prop a schema default or make it "
-            "widget-specific."
-        )
+        # Every kind-required prop carries a schema default, so no constructor
+        # prop is truly mandatory: ``Required[...]`` is never emitted.
+        widget_required[constructor] = frozenset()
 
     shared_values = {
         name: python_only_types.get(name) or kind_props[all_kinds[0]][name]

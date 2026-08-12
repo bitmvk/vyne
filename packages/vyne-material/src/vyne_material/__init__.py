@@ -1,8 +1,7 @@
 """Material 3 Expressive widgets for Vyne.
 
-The ``MATERIAL3_CATALOG`` mapping is kept in the same order as the live
-Material 3 component catalog.  It provides a machine-checkable coverage index
-for the component families implemented by this package.
+Every public constructor lowers to Vyne's existing renderer primitives;
+see ``docs/material3-expressive.md`` for the component-family coverage table.
 """
 
 from vyne_material.components import (
@@ -69,53 +68,6 @@ from vyne_material.theme import (
 )
 
 
-MATERIAL3_CATALOG: dict[str, tuple[str, ...]] = {
-    "app-bars": ("TopAppBar", "BottomAppBar"),
-    "badges": ("Badge", "Badged"),
-    "bottom-sheets": ("BottomSheet",),
-    "button-groups": ("ButtonGroup",),
-    "buttons": ("Button",),
-    "cards": ("Card",),
-    "carousel": ("Carousel",),
-    "checkbox": ("Checkbox",),
-    "chips": ("Chip",),
-    "date-pickers": ("DatePicker", "DateRangePicker"),
-    "dialogs": ("Dialog",),
-    "divider": ("MaterialDivider",),
-    "extended-fab": ("ExtendedFloatingActionButton",),
-    "fab-menu": ("FloatingActionButtonMenu",),
-    "floating-action-button": ("FloatingActionButton",),
-    "icon-buttons": ("IconButton",),
-    "lists": ("MaterialList", "ListItem"),
-    "loading-indicator": ("LoadingIndicator",),
-    "menus": ("Menu",),
-    "navigation-bar": ("NavigationBar",),
-    "navigation-drawer": ("NavigationDrawer",),
-    "navigation-rail": ("NavigationRail",),
-    "progress-indicators": (
-        "CircularProgressIndicator",
-        "LinearProgressIndicator",
-        "LinearWavyProgressIndicator",
-    ),
-    "radio-button": ("RadioButton",),
-    "search": ("SearchBar",),
-    "segmented-buttons": ("SegmentedButton", "SegmentedButtonGroup"),
-    "side-sheets": ("SideSheet",),
-    "sliders": ("Slider", "RangeSlider"),
-    "snackbar": ("Snackbar",),
-    "split-button": ("SplitButton",),
-    "switch": ("Switch",),
-    "tabs": ("Tab", "Tabs"),
-    "text-fields": ("TextField",),
-    "time-pickers": ("TimePicker",),
-    "toolbars": ("Toolbar", "FloatingToolbar"),
-    "tooltips": ("Tooltip",),
-}
-
-# Within the material namespace, ``Divider`` is the themed component.
-Divider = MaterialDivider
-
-
 __all__ = [
     "Badge",
     "Badged",
@@ -134,7 +86,6 @@ __all__ = [
     "DateRangePicker",
     "DEFAULT_THEME",
     "Dialog",
-    "Divider",
     "ExtendedFloatingActionButton",
     "FabMenuItem",
     "FloatingActionButton",
@@ -145,7 +96,6 @@ __all__ = [
     "LinearWavyProgressIndicator",
     "ListItem",
     "LoadingIndicator",
-    "MATERIAL3_CATALOG",
     "MaterialDivider",
     "MaterialList",
     "MaterialTheme",

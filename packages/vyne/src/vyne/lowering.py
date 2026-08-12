@@ -19,7 +19,9 @@ Style/Decoration supported tier (first tier):
     Shadow.elevation, Ripple.color → flat properties
 
 Unsupported features reject: gradients (linear/radial/sweep), dashed strokes,
-Shape oval/line/ring, translation-Z, flex/gap/size, bounded-ripple.
+non-rectangle shapes, translation-Z, unbounded ripple, and any Style/Decoration
+field that is not part of the supported tier (unknown fields reject with a
+field path).
 
 No ``style``, ``decoration``, or other opaque dicts cross the wire.
 """
@@ -103,7 +105,7 @@ def lower_element(
         for name, value in raw_props.items()
         if name not in ("key", "ref", "style", "decoration")
     }
-    layers: list[_PropLayer] = []
+    layers: list[dict[str, Any]] = []
     style_value = raw_props.get("style")
     if style_value is not None:
         layers.append(_lower_style(style_value, kind))
@@ -298,50 +300,21 @@ class CanonicalElement:
 # Default materialization
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class _PropLayer:
-    """One source layer of canonical props with explicit key presence.
-
-    Layers are merged by precedence (later wins, equal values collapse) so
-    no producer consults another layer's map or a shared ``explicit_props``
-    set — key presence is data, not dict membership.
-    """
-
-    values: dict[str, Any]
-    present: frozenset[str]
+def _normalize_layer(props: dict[str, Any]) -> dict[str, Any]:
+    """Canonicalize one raw source layer: aliases, then shorthands."""
+    return _resolve_shorthands(_resolve_aliases(dict(props)))
 
 
-def _normalize_layer(props: dict[str, Any]) -> _PropLayer:
-    """Canonicalize one raw source layer: aliases, then shorthands.
+def _merge_layers(defaults: dict[str, Any], *layers: dict[str, Any]) -> dict[str, Any]:
+    """Merge layers by precedence with ordered ``dict.update`` (later wins).
 
-    ``present`` is the CANONICAL key set after normalization (alpha becomes
-    opacity; padding becomes the four edges), so the merge sees exactly the
-    keys the layer really provides.
-    """
-    values = _resolve_shorthands(_resolve_aliases(dict(props)))
-    return _PropLayer(values=values, present=frozenset(values))
-
-
-_MISSING = object()
-
-
-def _merge_layers(defaults: dict[str, Any], *layers: _PropLayer) -> dict[str, Any]:
-    """Merge layers by precedence; later layers win, equal values collapse.
-
-    Collapse is TYPE-AWARE: ``1`` never equals ``True``, so an explicit
-    malformed value still replaces a same-valued default and gets validated
-    (a plain ``!=`` would treat ``1 == True`` and silently drop the error).
+    Layers are plain dicts; update preserves insertion order and replaces
+    earlier keys, so an explicit value always replaces a same-valued default
+    and gets validated — dict semantics never treat ``1 == True`` as equal.
     """
     result = dict(defaults)
     for layer in layers:
-        for name, value in layer.values.items():
-            if name not in layer.present:
-                continue
-            existing = result.get(name, _MISSING)
-            if existing is _MISSING or not (
-                type(existing) is type(value) and existing == value
-            ):
-                result[name] = value
+        result.update(layer)
     return result
 
 
@@ -540,26 +513,21 @@ _STYLE_SUPPORTED_MAP: dict[str, str] = {
 }
 
 
-_STYLE_UNSUPPORTED = frozenset({
-    "gap", "size", "flex", "flex_grow", "flex_shrink", "flex_basis", "align_self",
-})
-
-
-def _lower_style(style_value: Any, kind: str) -> _PropLayer:
-    """Lower a Style value into a canonical prop layer.
+def _lower_style(style_value: Any, kind: str) -> dict[str, Any]:
+    """Lower a Style value into a canonical prop layer (plain dict).
 
     Supported fields apply between defaults and explicit props; the merge
     (not this function) decides precedence. Unknown fields reject with a
     field path (MODEL-02).
     """
-    style_dict = _style_to_dict(style_value)
+    style_dict = _styling_to_dict(style_value, name="Style")
     values: dict[str, Any] = {}
 
     _ALL_KNOWN_STYLE_KEYS = {
         "text_color", "color", "background_color", "font_size",
         "padding", "width", "height", "align_items", "justify_content",
         "decoration",  # handled separately
-    } | _STYLE_UNSUPPORTED
+    }
 
     for style_field, style_val in style_dict.items():
         if style_val is None:
@@ -567,10 +535,7 @@ def _lower_style(style_value: Any, kind: str) -> _PropLayer:
         canonical_name = _STYLE_SUPPORTED_MAP.get(style_field)
 
         if canonical_name is None and style_field == "decoration":
-            deco_layer = _lower_decoration(style_val, kind)
-            for name, value in deco_layer.values.items():
-                if name in deco_layer.present:
-                    values[name] = value
+            values.update(_lower_decoration(style_val, kind))
             continue
 
         if canonical_name is not None:
@@ -579,12 +544,6 @@ def _lower_style(style_value: Any, kind: str) -> _PropLayer:
             else:
                 values[canonical_name] = style_val
             continue
-
-        if style_field in _STYLE_UNSUPPORTED:
-            raise ValueError(
-                f"Style field {style_field!r} is not yet supported. "
-                "Remove it or use the canonical flat prop instead."
-            )
 
         raise ValueError(
             f"Unknown Style field {style_field!r}. "
@@ -596,31 +555,25 @@ def _lower_style(style_value: Any, kind: str) -> _PropLayer:
     return _normalize_layer(values)
 
 
-def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
-    """Lower a Decoration value into a canonical prop layer.
+def _lower_decoration(deco_value: Any, kind: str) -> dict[str, Any]:
+    """Lower a Decoration value into a canonical prop layer (plain dict).
 
     Supported: solid rectangle fill color, stroke (without dash), corner radii,
-    shadow elevation, ripple color. Rejects: clip, unknown top-level fields,
+    shadow elevation, ripple color. Rejects: unknown top-level fields,
     gradients, dashed strokes, non-rectangle shapes, translation_z, unbounded
     ripple (MODEL-02). Precedence with explicit props is decided by the merge,
     not here.
     """
-    deco_dict = _decoration_to_dict(deco_value)
+    deco_dict = _styling_to_dict(deco_value, name="Decoration")
     values: dict[str, Any] = {}
 
-    _KNOWN_DECO_KEYS = {"shape", "shadow", "ripple", "clip"}
+    _KNOWN_DECO_KEYS = {"shape", "shadow", "ripple"}
     for key in deco_dict:
         if key not in _KNOWN_DECO_KEYS:
             raise ValueError(
                 f"Unknown Decoration field {key!r}. "
                 f"Supported fields: {', '.join(sorted(_KNOWN_DECO_KEYS))}"
             )
-
-    if deco_dict.get("clip") is not None:
-        raise ValueError(
-            "Decoration.clip is not yet supported. "
-            "Clipping requires a native outline slot which is planned but not implemented."
-        )
 
     shape = deco_dict.get("shape")
     if shape is not None:
@@ -642,7 +595,7 @@ def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
 
         stroke = shape.get("stroke")
         if stroke is not None:
-            stroke_dict = _stroke_to_dict(stroke)
+            stroke_dict = _styling_to_dict(stroke, name="Stroke")
             if stroke_dict.get("dash_width") is not None or stroke_dict.get("dash_gap") is not None:
                 raise ValueError(
                     "Dashed strokes in Decoration are not yet supported."
@@ -656,7 +609,10 @@ def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
 
         corners = shape.get("corners")
         if corners is not None:
-            corners_dict = _corners_to_dict(corners)
+            if isinstance(corners, (int, float)):
+                corners_dict = {"radius": corners}
+            else:
+                corners_dict = _styling_to_dict(corners, name="CornerRadius")
             for corner_name, canon_name in [
                 ("top_left", "corner_radius_top_left"),
                 ("top_right", "corner_radius_top_right"),
@@ -669,7 +625,7 @@ def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
 
     shadow = deco_dict.get("shadow")
     if shadow is not None:
-        shadow_dict = _shadow_to_dict(shadow)
+        shadow_dict = _styling_to_dict(shadow, name="Shadow")
         elevation = shadow_dict.get("elevation")
         if elevation is not None:
             values["elevation"] = elevation
@@ -681,7 +637,7 @@ def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
 
     ripple = deco_dict.get("ripple")
     if ripple is not None:
-        ripple_dict = _ripple_to_dict(ripple)
+        ripple_dict = _styling_to_dict(ripple, name="Ripple")
         ripple_color = ripple_dict.get("color")
         if ripple_color is not None:
             values["ripple_color"] = ripple_color
@@ -692,26 +648,13 @@ def _lower_decoration(deco_value: Any, kind: str) -> _PropLayer:
     return _normalize_layer(values)
 
 
-def _style_to_dict(style: Any) -> dict[str, Any]:
-    """Convert a Style to a plain dict."""
-    if isinstance(style, dict):
-        return dict(style)
-    if isinstance(style, FrozenMap):
-        return dict(style)
-    if hasattr(style, "to_props"):
-        return style.to_props()
-    raise TypeError(f"style must be a Style or dict, got {type(style).__name__}")
-
-
-def _decoration_to_dict(deco: Any) -> dict[str, Any]:
-    """Convert a Decoration to a plain dict."""
-    if isinstance(deco, dict):
-        return dict(deco)
-    if isinstance(deco, FrozenMap):
-        return dict(deco)
-    if hasattr(deco, "to_props"):
-        return deco.to_props()
-    raise TypeError(f"decoration must be a Decoration or dict, got {type(deco).__name__}")
+def _styling_to_dict(value: Any, *, name: str) -> dict[str, Any]:
+    """Convert a styling dataclass, dict, or FrozenMap to a plain dict."""
+    if isinstance(value, (dict, FrozenMap)):
+        return dict(value)
+    if hasattr(value, "to_props"):
+        return value.to_props()
+    raise TypeError(f"{name} must be a {name} or dict, got {type(value).__name__}")
 
 
 def _fill_to_color(fill: Any) -> str | None:
@@ -732,41 +675,3 @@ def _fill_to_color(fill: Any) -> str | None:
             raise ValueError("Gradient fills are not yet supported.")
         return d.get("color")
     return None
-
-
-def _stroke_to_dict(stroke: Any) -> dict[str, Any]:
-    """Convert Stroke to dict."""
-    if isinstance(stroke, (dict, FrozenMap)):
-        return dict(stroke)
-    if hasattr(stroke, "to_props"):
-        return stroke.to_props()
-    raise TypeError("Stroke must be a Stroke or dict")
-
-
-def _corners_to_dict(corners: Any) -> dict[str, Any]:
-    """Convert CornerRadius to dict."""
-    if isinstance(corners, (int, float)):
-        return {"radius": corners}
-    if isinstance(corners, (dict, FrozenMap)):
-        return dict(corners)
-    if hasattr(corners, "to_props"):
-        return corners.to_props()
-    raise TypeError("CornerRadius must be CornerRadius, number, or dict")
-
-
-def _shadow_to_dict(shadow: Any) -> dict[str, Any]:
-    """Convert Shadow to dict."""
-    if isinstance(shadow, (dict, FrozenMap)):
-        return dict(shadow)
-    if hasattr(shadow, "to_props"):
-        return shadow.to_props()
-    raise TypeError("Shadow must be Shadow or dict")
-
-
-def _ripple_to_dict(ripple: Any) -> dict[str, Any]:
-    """Convert Ripple to dict."""
-    if isinstance(ripple, (dict, FrozenMap)):
-        return dict(ripple)
-    if hasattr(ripple, "to_props"):
-        return ripple.to_props()
-    raise TypeError("Ripple must be Ripple or dict")

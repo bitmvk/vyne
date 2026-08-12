@@ -292,16 +292,6 @@ internal class CanvasView(context: Context) : View(context) {
         current.put(parts.last(), value)
     }
 
-    /**
-     * Resolve AnimatedValue markers in the incoming ops, replacing them
-     * with their initial static values.  The actual animation is driven
-     * by the PresentationEngine via ``motion_set_target`` ops sent
-     * alongside the commit.
-     */
-    fun resolveAnimatedValues(incoming: JSONArray): JSONArray {
-        return resolveArray(incoming)
-    }
-
     private fun resolveArray(array: JSONArray): JSONArray = JSONArray().also { result ->
         for (i in 0 until array.length()) {
             result.put(resolveValue(array.opt(i)))

@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 from vyne.elements import Box, Canvas, Column, Element, Row, Text
-from vyne_material._callbacks import CallbackAdapter, prepare_handler
 from vyne_material._geometry import progress_path as _progress_path
 from vyne_material._geometry import wavy_path as _wavy_path
 from vyne_material._validation import alpha
@@ -17,21 +16,25 @@ Callback = Callable[..., Any]
 
 
 def invoke(callback: Callback | None, value: Any) -> None:
-    """Invoke a controlled-component callback with a value when accepted.
-
-    Uses :class:`CallbackAdapter` for one-time signature inspection.
-    """
+    """Invoke a controlled-component callback with a value."""
     if callback is None:
         return
-    CallbackAdapter(callback).invoke(value)
+    callback(value)
 
 
 def value_handler(callback: Callback | None, value: Any) -> Callback | None:
-    """Create an event handler that calls *callback* with *value*.
+    """Create an event handler that calls *callback* with *value* directly.
 
-    Uses :func:`prepare_handler` from ``_callbacks`` for one-time inspection.
+    Controlled callbacks require their documented value argument; the core
+    event registry handles zero-argument event callbacks.
     """
-    return prepare_handler(callback, value)
+    if callback is None:
+        return None
+
+    def handler(_event: Any) -> None:
+        callback(value)
+
+    return handler
 
 
 def text(

@@ -164,7 +164,7 @@ def main() -> int:
 
     # ── Extension flow through the installed CLI ─────────────────────────
     # Copy the example extension into the generated project, run the
-    # installed `vyne build` (discovery + journaled generation), and verify
+    # installed `vyne build` (discovery + registrant generation), and verify
     # the generated Kotlin registrant, then assemble.
     ext_src = PROJECT_ROOT / "examples" / "extensions" / "timer_ring"
     ext_dst = project / "extensions" / "timer_ring"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vyne.cli.generation import ConflictPolicy, PlanBuilder
+from vyne.cli.generation import PlanBuilder
 
 from vyne.cli.extensions import is_valid_identifier
 
@@ -20,10 +20,10 @@ def create_extension(root: Path, name: str, *, force: bool = False) -> Path:
         raise RuntimeError(
             f"Extension name {name!r} must be a valid Python identifier"
         )
-    if name in {"app", "vyne", "vyne_generated_extensions"}:
+    if name in {"app", "vyne"}:
         raise RuntimeError(
-            f"Extension name {name!r} collides with the app, framework, or "
-            "generated bootstrap module name"
+            f"Extension name {name!r} collides with the app or framework "
+            "bootstrap module name"
         )
     extension_dir = root / "extensions" / name
     if extension_dir.exists() and any(extension_dir.iterdir()) and not force:
@@ -89,11 +89,12 @@ def create_extension(root: Path, name: str, *, force: bool = False) -> Path:
     )
 
     builder = PlanBuilder(extension_dir)
-    policy = ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR
-    builder.add_file("extension.toml", manifest, policy=policy)
-    builder.add_file(f"python/{name}.py", python_entry, policy=policy)
-    builder.add_file("android/MyWidgetView.kt", kotlin_source, policy=policy)
+    builder.add_file("extension.toml", manifest)
+    builder.add_file(f"python/{name}.py", python_entry)
+    builder.add_file("android/MyWidgetView.kt", kotlin_source)
     plan = builder.preflight()
-    plan.apply()
-    plan.cleanup()
+    try:
+        plan.apply(force=force)
+    finally:
+        plan.cleanup()
     return extension_dir

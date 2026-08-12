@@ -12,12 +12,9 @@ representations before the diff engine sees them.
 kind defaults < Style/Decoration tier < explicit direct props
 ```
 
-Layers are merged by a type-aware merge:
-
-- later layers win
-- equal values collapse
-- `1` never equals `True`, so a malformed explicit value still replaces a
-  same-valued default and gets validated
+Layers are merged with ordered `dict.update`: later layers win. An explicit
+value always replaces a same-valued default and gets validated — dict
+semantics never treat `1 == True` as equal.
 
 The merge decides precedence. No producer consults another layer's keys.
 
@@ -52,10 +49,10 @@ Supported Style fields:
 - solid `Fill` color, `Stroke` (no dash), `CornerRadius`,
   `Shadow.elevation`, `Ripple.color`
 
-Unsupported Style fields reject with a field path:
-
-- `gap`, `size`, `flex`, `flex_grow`, `flex_shrink`, `flex_basis`,
-  `align_self`
+Unsupported/removed Style fields reject as unknown fields with a field path.
+`gap`, `size`, `flex`, `flex_grow`, `flex_shrink`, `flex_basis`, and
+`align_self` were removed from the `Style` type — they are not part of the
+supported tier.
 
 ## Decoration tier
 
@@ -67,15 +64,16 @@ Supported:
 - `Shadow.elevation` -> `elevation`
 - `Ripple.color` -> `ripple_color`
 
-Rejected:
+Rejected (unknown fields reject; removed constructors/fields are gone from
+the `vyne.style` API):
 
 - gradients (linear/radial/sweep)
 - dashed strokes
 - Shape oval/line/ring
 - `translation_z`
 - unbounded ripple
-- `Decoration.clip` (needs a native outline slot, planned but not
-  implemented)
+- `Decoration.clip` (not part of the API — needs a native outline slot,
+  planned but not implemented)
 
 ## Validation flow
 

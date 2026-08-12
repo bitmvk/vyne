@@ -50,7 +50,7 @@ order in [contributing/getting-started.md](contributing/getting-started.md).
 | file | concern |
 |---|---|
 | [material/material3.md](material/material3.md) | the Python-owned Material 3 catalog |
-| [extensions/extensions.md](extensions/extensions.md) | the extension contract |
+| [extensions.md](extensions.md) | the extension contract |
 
 ## Android host
 
@@ -66,7 +66,7 @@ order in [contributing/getting-started.md](contributing/getting-started.md).
 | file | concern |
 |---|---|
 | [cli/commands.md](cli/commands.md) | the `vyne` command line |
-| [cli/generation.md](cli/generation.md) | transactional project generation |
+| [cli/generation.md](cli/generation.md) | empty-target atomic project generation |
 
 ## Testing and contributing
 
@@ -82,8 +82,6 @@ order in [contributing/getting-started.md](contributing/getting-started.md).
 | file | concern |
 |---|---|
 | [canonical-ui-spec.md](canonical-ui-spec.md) | the platform-neutral UI model (design baseline) |
-| [design-patterns-plan.md](design-patterns-plan.md) | the ten implemented design patterns |
 | [extensions.md](extensions.md) | the extension guide (contract details) |
 | [material3-expressive.md](material3-expressive.md) | the Material catalog and usage guide |
-| [implementation-resources.md](implementation-resources.md) | constraints, locked decisions, evidence |
 | [rn-parity-roadmap.md](rn-parity-roadmap.md) | React Native core parity: what to add, what to leave to the ecosystem |

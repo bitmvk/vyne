@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 class DirectBridgeTests(unittest.TestCase):
@@ -79,7 +79,7 @@ class DirectBridgeTests(unittest.TestCase):
         self.assertIn("override fun onConfigurationChanged", activity)
         self.assertIn("renderer.root.requestApplyInsets()", activity)
 
-    def test_direct_host_exposes_typed_bulk_transactions(self):
+    def test_direct_host_exposes_one_json_commit_call(self):
         source = (
             self.ROOT
             / "android"
@@ -92,13 +92,17 @@ class DirectBridgeTests(unittest.TestCase):
             / "DirectRenderHost.kt"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("fun mountNodes(", source)
-        self.assertIn("fun commitMountNodes(", source)
-        self.assertIn("fun commitPropBatch(", source)
-        self.assertIn("fun commitContiguousStringPropBatch(", source)
+        self.assertIn("fun commitJson(json: String)", source)
         self.assertIn("fun getActivity()", source)
         self.assertIn("fun createCallback(", source)
+        # The typed-column codec and batch APIs are gone from the host.
+        self.assertNotIn("fun mountNodes(", source)
+        self.assertNotIn("fun commitPropBatch(", source)
+        self.assertNotIn("fun setPropBatch(", source)
         self.assertNotIn("jbyteArray", source)
+        self.assertNotIn("jlongArray", source)
+        self.assertNotIn("jdoubleArray", source)
+        self.assertNotIn("jstringArray", source)
 
     def test_user_callback_is_a_small_typed_android_surface(self):
         source = (

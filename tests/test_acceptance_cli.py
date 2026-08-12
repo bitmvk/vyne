@@ -1,190 +1,21 @@
 """CLI and project generation acceptance tests (CLI-01, CLI-02).
 
 Tests for:
-- Structure-preserving TOML dependency editing
-- PEP 508 requirement parsing and normalized comparison
 - Config validation (package name, version, SDK ordering, ABI)
-- Atomic project generation and rollback
+- Empty-target project generation and atomic replacement
 - Generated project structure and build contract
 
-Evidence: filesystem digest/rollback and generated project smoke.
+Evidence: filesystem digest and generated project smoke.
 """
 
 from __future__ import annotations
 
-import json
-import re
-import shutil
-import tomllib
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from vyne.cli.new import create_project
 from vyne.cli.project import load_project
-
-
-class TOMLDependencyEditingTests(unittest.TestCase):
-    """CLI-01: Structure-preserving dependency editing."""
-
-    def _project_with_pyproject(self, content: str) -> Path:
-        """Create a project dir whose pyproject.toml starts with *content*."""
-        tmp = TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        path = Path(tmp.name) / "TestProject"
-        path.mkdir(parents=True, exist_ok=True)
-        (path / "pyproject.toml").write_text(content, encoding="utf-8")
-        return path
-
-    def test_add_to_empty_dependencies(self):
-        """Adding Vyne to empty dependencies list."""
-        path = self._project_with_pyproject(
-            '[project]\nname = "test"\ndependencies = []\n',
-        )
-        create_project(path)
-        pyproject = tomllib.loads(
-            (path / "pyproject.toml").read_text(encoding="utf-8")
-        )
-        deps = pyproject["project"]["dependencies"]
-        self.assertTrue(any(d.startswith("vyne") for d in deps))
-
-    def test_existing_vyne_is_noop(self):
-        """Existing Vyne dependency is byte-for-byte no-op."""
-        path = self._project_with_pyproject(
-            '[project]\nname = "test"\ndependencies = ["vyne"]\n',
-        )
-        create_project(path)
-        pyproject = (path / "pyproject.toml").read_text(encoding="utf-8")
-        # Should not duplicate
-        self.assertEqual(pyproject.count('"vyne"'), 1)
-
-    def test_vyness_not_matched(self):
-        """vyness is not Vyne."""
-        path = self._project_with_pyproject(
-            '[project]\nname = "test"\ndependencies = ["vyness>=1.0"]\n',
-        )
-        create_project(path)
-        pyproject = tomllib.loads(
-            (path / "pyproject.toml").read_text(encoding="utf-8")
-        )
-        deps = pyproject["project"]["dependencies"]
-        # Should have both vyness and vyne
-        self.assertTrue(any("vyness" in d for d in deps))
-        self.assertTrue(any(d.startswith("vyne") for d in deps))
-
-    def test_comments_preserved(self):
-        """Comments in TOML are preserved."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "TestProject"
-            content = (
-                '# Top comment\n'
-                '[project]\n'
-                'name = "test"\n'
-                '# inline comment about deps\n'
-                'dependencies = [\n'
-                '    "requests",  # keep this\n'
-                ']\n'
-            )
-            path.mkdir(parents=True, exist_ok=True)
-            (path / "pyproject.toml").write_text(content, encoding="utf-8")
-            create_project(path)
-
-            result = (path / "pyproject.toml").read_text(encoding="utf-8")
-            self.assertIn("keep this", result)
-
-    def test_multiline_arrays_preserved(self):
-        """Multiline array formatting is preserved."""
-        path = self._project_with_pyproject(
-            '[project]\nname = "test"\ndependencies = [\n    "requests>=2.34",\n]\n',
-        )
-        create_project(path)
-        result = (path / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn("requests>=2.34", result)
-
-    def test_trailing_commas_preserved(self):
-        """Trailing commas are preserved."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "TestProject"
-            content = (
-                '[project]\n'
-                'name = "test"\n'
-                'dependencies = [\n'
-                '    "requests>=2.34",\n'
-                ']\n'
-            )
-            path.mkdir(parents=True, exist_ok=True)
-            (path / "pyproject.toml").write_text(content, encoding="utf-8")
-            create_project(path)
-            pyproject = (path / "pyproject.toml").read_text(encoding="utf-8")
-            parsed = tomllib.loads(pyproject)
-            deps = parsed["project"]["dependencies"]
-            self.assertTrue(any(d.startswith("vyne") for d in deps))
-
-    def test_tool_tables_preserved(self):
-        """Unrelated tool tables are preserved."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "TestProject"
-            content = (
-                '[project]\n'
-                'name = "test"\n'
-                'dependencies = []\n'
-                '\n'
-                '[tool.uv]\n'
-                'dev-dependencies = ["pytest"]\n'
-            )
-            path.mkdir(parents=True, exist_ok=True)
-            (path / "pyproject.toml").write_text(content, encoding="utf-8")
-            create_project(path)
-            result = (path / "pyproject.toml").read_text(encoding="utf-8")
-            self.assertIn("tool.uv", result)
-            self.assertIn("pytest", result)
-
-    def test_url_dependency_preserved(self):
-        """URL-based dependencies are preserved."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "TestProject"
-            content = (
-                '[project]\n'
-                'name = "test"\n'
-                'dependencies = ["my-pkg @ https://example.com/pkg.whl"]\n'
-            )
-            path.mkdir(parents=True, exist_ok=True)
-            (path / "pyproject.toml").write_text(content, encoding="utf-8")
-            create_project(path)
-            result = (path / "pyproject.toml").read_text(encoding="utf-8")
-            parsed = tomllib.loads(result)
-            deps = parsed["project"]["dependencies"]
-            self.assertTrue(any("my-pkg" in d for d in deps))
-            self.assertTrue(any(d.startswith("vyne") for d in deps))
-
-    def test_case_normalized_matching(self):
-        """VYNE, VyNe, vyne are all recognized."""
-        for variant in ["VYNE", "VyNe", "vyne", "vYnE"]:
-            with TemporaryDirectory() as tmp:
-                path = Path(tmp) / "TestProject"
-                path.mkdir(parents=True, exist_ok=True)
-                (path / "pyproject.toml").write_text(
-                    f'[project]\nname = "test"\ndependencies = ["{variant}"]\n',
-                    encoding="utf-8",
-                )
-                create_project(path)
-                result = (path / "pyproject.toml").read_text(encoding="utf-8")
-                # Should not add another vyne
-                self.assertIn(variant, result)
-
-    def test_dash_underscore_normalization(self):
-        """vyne-core is not vyne."""
-        path = self._project_with_pyproject(
-            '[project]\nname = "test"\ndependencies = ["vyne-core>=1.0"]\n'
-        )
-        create_project(path)
-        pyproject = tomllib.loads(
-            (path / "pyproject.toml").read_text(encoding="utf-8")
-        )
-        deps = pyproject["project"]["dependencies"]
-        self.assertTrue(any("vyne-core" in d for d in deps))
-        self.assertTrue(any(d.startswith("vyne") for d in deps))
-
 
 class ConfigValidationTests(unittest.TestCase):
     """CLI-02: Config validation (package name, version, SDK, ABI)."""
@@ -216,7 +47,7 @@ class ConfigValidationTests(unittest.TestCase):
 
 
 class ProjectGenerationTests(unittest.TestCase):
-    """CLI-02: Project generation and rollback."""
+    """CLI-02: Project generation and atomic replacement."""
 
     def test_new_project_creates_expected_structure(self):
         """Generated project has all required files."""
@@ -259,7 +90,7 @@ class ProjectGenerationTests(unittest.TestCase):
             self.assertIn("from vyne import", app_py)
 
     def test_refuses_overwrite_existing_file(self):
-        """Project creation refuses to overwrite existing managed files."""
+        """Project creation refuses to generate into a non-empty directory."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "Existing"
             path.mkdir()
@@ -275,7 +106,7 @@ class ProjectGenerationTests(unittest.TestCase):
             )
 
     def test_force_overwrites(self):
-        """--force overwrites existing files."""
+        """--force replaces an existing directory entirely."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "ForceTest"
             path.mkdir()
@@ -286,39 +117,20 @@ class ProjectGenerationTests(unittest.TestCase):
             content = (path / "app.py").read_text(encoding="utf-8")
             self.assertIn("run_app", content)
 
-    def test_preserves_unrelated_files(self):
-        """Unrelated files survive project generation."""
+    def test_non_empty_directory_refused_without_force(self):
+        """A non-empty directory is refused even when no managed file
+        conflicts — existing files are never merged or preserved."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "Mixed"
             path.mkdir()
             (path / "notes.txt").write_text("my notes", encoding="utf-8")
-            path.mkdir(parents=True, exist_ok=True)
-            (path / "data.json").write_text('{"key": "value"}', encoding="utf-8")
 
-            create_project(path)
+            with self.assertRaises(RuntimeError):
+                create_project(path)
 
             self.assertEqual(
                 (path / "notes.txt").read_text(encoding="utf-8"),
                 "my notes",
-            )
-            self.assertEqual(
-                (path / "data.json").read_text(encoding="utf-8"),
-                '{"key": "value"}',
-            )
-
-    def test_non_empty_directory_without_conflicts(self):
-        """Non-empty directory without managed files succeeds."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "DirWithFiles"
-            path.mkdir()
-            (path / "readme.md").write_text("# My App", encoding="utf-8")
-
-            create_project(path)
-
-            self.assertTrue((path / "app.py").exists())
-            self.assertEqual(
-                (path / "readme.md").read_text(encoding="utf-8"),
-                "# My App",
             )
 
     def test_custom_module_name(self):
@@ -346,24 +158,27 @@ class ProjectCreationEdgeTests(unittest.TestCase):
 
             self.assertEqual(project.app.package, "com.example.base.apppackage")
 
-    def test_project_rerun_when_generated_files_match(self):
-        """Rerunning creation on a matching generated project succeeds."""
+    def test_project_rerun_refused_without_force(self):
+        """Rerunning creation over an existing generated project is refused
+        unless --force replaces it entirely."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "ExistingUvProject"
-            path.mkdir()
-            (path / "pyproject.toml").write_text(
-                '[project]\nname = "existing"\n',
-                encoding="utf-8",
-            )
-
-            create_project(path)
             create_project(path)
 
+            with self.assertRaises(RuntimeError):
+                create_project(path)
+
+            # Original project is untouched by the refused rerun.
+            self.assertTrue((path / "vyne.toml").is_file())
+            self.assertTrue((path / "app.py").is_file())
+
+            # --force regenerates cleanly over the existing project.
+            create_project(path, force=True)
             self.assertTrue((path / "vyne.toml").is_file())
             self.assertTrue((path / "app.py").is_file())
 
     def test_force_overwrites_existing_pyproject(self):
-        """--force replaces an existing pyproject.toml."""
+        """--force replaces an existing pyproject.toml with the generated one."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "ExistingUvProject"
             path.mkdir()
@@ -379,20 +194,21 @@ class ProjectCreationEdgeTests(unittest.TestCase):
                 (path / "pyproject.toml").read_text(encoding="utf-8"),
             )
 
-    def test_updates_existing_pyproject_without_dependencies_key(self):
-        """A pyproject without a dependencies key still gains the Vyne dep."""
+    def test_existing_pyproject_refused_without_force(self):
+        """A directory with an existing pyproject.toml is a non-empty target
+        and is refused: existing pyprojects are never edited in place."""
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "ExistingUvProject"
             path.mkdir()
             existing = '[project]\nname = "existing"\n'
             (path / "pyproject.toml").write_text(existing, encoding="utf-8")
 
-            create_project(path)
+            with self.assertRaises(RuntimeError):
+                create_project(path)
 
             pyproject = (path / "pyproject.toml").read_text(encoding="utf-8")
-            self.assertIn('name = "existing"', pyproject)
-            self.assertIn("vyne", pyproject)
-            self.assertTrue((path / "vyne.toml").is_file())
+            self.assertEqual(pyproject, existing)
+            self.assertFalse((path / "vyne.toml").is_file())
 
     def test_project_creation_without_checkout_root(self):
         """Packaged mode: creation works with an explicit base project."""

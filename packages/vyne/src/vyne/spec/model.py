@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +51,6 @@ class ValueSpec:
     item_spec: "ValueSpec | None" = None
     min_items: int | None = None
     max_items: int | None = None
-    # Child list — validated separately by the kind spec
-    children: bool = False
 
     def validate(self, value: Any, *, path: str = "value") -> None:
         """Raise TypeError/ValueError if *value* does not conform."""
@@ -208,7 +206,6 @@ class PropSpec:
     default: Any = None  # canonical default value
     applies_to: frozenset[str] = field(default_factory=frozenset)
     animatable: bool = False
-    removal: Literal["canonical_default"] = "canonical_default"
     # Native Kotlin View property slot for mechanical application.
     # When None the prop is Python-only (lowered away before commit).
     wire_name: str | None = None
@@ -228,27 +225,12 @@ class KindSpec:
     kind: str
     # Accepted child kinds (empty means any / no restriction)
     allowed_children: frozenset[str] = field(default_factory=frozenset)
-    min_children: int = 0
     max_children: int | None = None
-    # Prop names that are required for this kind
-    required: frozenset[str] = field(default_factory=frozenset)
-    # All props that apply to this kind (compat: frozenset[str])
-    props: frozenset[str] = field(default_factory=frozenset)
-    # Event names this kind supports (for code generation)
-    events: frozenset[str] = field(default_factory=frozenset)
-    # Human-readable, platform-neutral description (for docs generation).
-    # Platform factories live in each host registry, never in this schema.
-    description: str = ""
 
     @property
     def leaf(self) -> bool:
         """True if this kind cannot have children (leaf node)."""
         return self.max_children == 0
-
-    @property
-    def required_children(self) -> frozenset[str]:
-        """Kinds that must appear as children (empty for all)."""
-        return frozenset()
 
 
 
@@ -275,10 +257,9 @@ class CanvasOpSpec:
 class EventSpec:
     """Definition of one supported event type.
 
-    Each payload field carries an optional ValueSpec for validation,
-    an optional controlled-prop mapping (the canonical prop name whose
-    native value is acknowledged by this field), and a Kotlin wire name
-    for code generation.
+    Each payload field carries an optional ValueSpec for validation and an
+    optional controlled-prop mapping (the canonical prop name whose native
+    value is acknowledged by this field).
     """
 
     name: str
@@ -289,8 +270,6 @@ class EventSpec:
     payload_specs: dict[str, ValueSpec] = field(default_factory=dict)
     # Maps payload_field -> canonical_prop_name for controlled-value ack.
     controlled_props: dict[str, str] = field(default_factory=dict)
-    # Kotlin wire name for each payload field (for code generation).
-    payload_wire_names: dict[str, str] = field(default_factory=dict)
     # True when the payload is open (extension events): no field validation
     # is applied and any bridge-safe payload is accepted. A spec that is
     # neither closed-with-fields nor open means a closed empty payload.

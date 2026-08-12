@@ -10,13 +10,13 @@ uv run python -m unittest discover -s tests
 
 Coverage includes:
 
-- reconciliation planner and the reference applier
+- reconciliation planner and the reference applier (`native_model.py`)
 - lowering, precedence, edges
 - protocol validation, events, motion
 - commit coordinator, publication faults, revision receipts
 - state journal, async callbacks (matrix), scheduler caveats
 - direct transport, native bridge
-- CLI: config, dependencies, generation, fault matrix, project identity
+- CLI: config, generation transaction, project identity
 - extensions: registry, lowering, protocol, bootstrap, notification
 - Material: callbacks, colors, dates, selection, slider model, disabled
   matrix
@@ -24,15 +24,7 @@ Coverage includes:
 - schema coverage, value spec validation
 - element immutability, occurrence refs, component keys
 - launch, bootstrap context
-- docs acceptance (README and guide examples)
-
-### Oracles
-
-`tests/support/native_model.py` is the reference applier: it applies
-reconciliation plans to a simulated native tree. `tests/support/
-reconciliation_oracle.py` compares the applied tree against building the
-desired tree from scratch. Every plan must reproduce the desired tree
-exactly.
+- showcase app (`examples/app.py`)
 
 ## Kotlin JVM tests
 
@@ -48,7 +40,7 @@ extensions, so their Kotlin source dirs must be on the compile path
 Coverage includes:
 
 - preflight and transaction rollback (RendererTransactionTest,
-  RenderTransactionApplierTest, RendererRecoveryTest)
+  RenderTransactionApplierTest)
 - mechanical digest (StaticDrawMechanicsTest)
 - BridgeWorkScheduler, order-preserving event queue, callback admission
 - PointerSession, EventBindings, OutlineStrategy
@@ -94,13 +86,13 @@ python scripts/run_generated_project_smoke.py --work-root /tmp/x --venv-root /tm
 Verifies the whole toolchain: wheel install -> `vyne new` -> gradle
 assemble -> APK metadata -> extension build + generated wiring.
 
-`scripts/run_generated_project_smoke.py` (10 gates) and
-`scripts/verify-protected-baseline.py` guard the packaged baseline.
+`scripts/run_generated_project_smoke.py` gates the packaged baseline.
 
 ## Showcase and benchmarks
 
 - `examples/app.py` — Vyne Lab, the interactive showcase (Motion, Async,
-  Style, Controls tabs). `test_showcase_app.py` renders it.
+  Style, Controls, Lists, and Material tabs). `test_showcase_app.py` renders
+  the galleries and exercises list mutation.
 - `benchmarks/bridge_benchmark_app.py` — bridge performance measurement
   (logcat `VYNE_BENCH` lines from `beginMeasurement`).
 
@@ -109,8 +101,6 @@ assemble -> APK metadata -> extension build + generated wiring.
 - Runtime tests use `MemoryTransport` with an attached runtime, which
   auto-acknowledges commits so the recovery state machine advances.
 - `wait_for_async_callbacks()` settles scheduled async work in tests.
-- The docs acceptance test (`test_acceptance_docs.py`) validates README
-  examples and required deliverables.
 
 ## Related
 

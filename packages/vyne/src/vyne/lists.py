@@ -1,20 +1,18 @@
-"""Public list surface: the fixed ``List``, the generic ``VirtualList``, and contracts.
+"""Public list surface: the fixed ``List`` and the generic ``VirtualList``.
 
-The fixed ``List`` renders a windowed fixed-extent list on the private
-virtualization engine, which owns window selection, projection, and
-rendering.
+``List`` is a convenience wrapper: it renders a fixed-extent virtualized list
+on the generic engine using the built-in :class:`FixedLinearLayout`, so both
+components share one engine, one controller type, and one window policy.
 
 ``VirtualList`` is the generic engine (M2): it consumes the M1 contracts and a
 ``VirtualLayout`` strategy, composes positioned realized cells from ordinary
 primitives, feeds per-cell measurements back into the layout, and supports
 imperative scrolling.
 
-One public :class:`ListController` drives either component.  It owns the two
-private engine controllers (the O(1) fixed planner and the generic placement
-engine) and dispatches every command to whichever one is currently bound, so
-a single controller can drive a ``List`` or a ``VirtualList`` with the same
-API.  The private engines are internal machinery, not public concepts; a
-controller bound to more than one mounted list raises clearly.
+One public :class:`ListController` drives either component.  It owns the
+private generic engine controller and dispatches every command to the
+mounted list.  The private engine is internal machinery, not a public
+concept; a controller bound to more than one mounted list raises clearly.
 
 ``VirtualData``, ``ViewportRect``, ``CellMeasurement``,
 ``StickyConstraint``, ``VirtualPlacement``, ``LayoutResult``,
@@ -41,17 +39,11 @@ from vyne._lists.contracts import (
     VirtualPlacement,
     select_placements,
 )
-from vyne._lists.fixed import (
-    FixedVirtualListController,
-    FixedVirtualListSpec,
-    render_fixed_virtual_list,
-)
 from vyne._lists.generic import (
     GenericVirtualListController,
     VirtualListSpec,
     render_generic_virtual_list,
 )
-from vyne._lists.model import IndexRange, RenderMask, WindowConfig
 from vyne._lists.source import SequenceDataSource
 from vyne.component import component
 from vyne.elements import Element
@@ -72,26 +64,13 @@ class ListController:
     """
 
     def __init__(self) -> None:
-        self._fixed = FixedVirtualListController()
         self._generic = GenericVirtualListController()
 
-    def _bound_engine(
-        self,
-    ) -> FixedVirtualListController | GenericVirtualListController:
-        """Return the single bound engine; raise if zero or multiple bind."""
-        fixed_bound = self._fixed.is_mounted
-        generic_bound = self._generic.is_mounted
-        if fixed_bound and generic_bound:
-            raise RuntimeError(
-                "This ListController is bound to more than one mounted list. "
-                "Use a separate controller per list, or pass key=... so a "
-                "shared controller can follow a reordering list."
-            )
-        if fixed_bound:
-            return self._fixed
-        if generic_bound:
-            return self._generic
-        raise RuntimeError("List controller is not mounted to a list")
+    def _bound_engine(self) -> GenericVirtualListController:
+        """Return the bound engine; raise when nothing is mounted."""
+        if not self._generic.is_mounted:
+            raise RuntimeError("List controller is not mounted to a list")
+        return self._generic
 
     def scroll_to_offset(self, offset: float, *, animated: bool) -> None:
         """Scroll to an explicit main-axis offset."""
@@ -124,82 +103,6 @@ class ListController:
         answers for the rest.  Any other key raises without a scan.
         """
         self._bound_engine().scroll_to_key(key, alignment=alignment, animated=animated)
-
-
-@component
-def _list_component(
-    list_key: Any,
-    data: Sequence[Any],
-    render_item: Callable[[Any, int], Element],
-    key_for_item: Callable[[Any, int], Any] | None,
-    item_extent: float,
-    axis: Literal["vertical", "horizontal"],
-    initial_item_count: int,
-    overscan: float,
-    max_render_ahead_viewports: float,
-    controller: ListController | None,
-    scroll_props: FrozenMap,
-) -> Element:
-    """Render one List: wrap data lazily, own the window, delegate to engine.
-
-    The adapter is O(1) to construct and reads items/keys only for realized
-    cells, so a window update never copies or scans the data.
-    """
-    owned_controller = (
-        state(ListController()).value
-        if current_runtime() is not None
-        else ListController()
-    )
-    selected_controller = controller or owned_controller
-    source = SequenceDataSource(data, key_for_item)
-    initial_stop = min(initial_item_count, source.item_count)
-    initial_mask = RenderMask.from_ranges(IndexRange(0, initial_stop))
-    spec = FixedVirtualListSpec(
-        source=source,
-        controller=selected_controller._fixed,
-        render_item=lambda item, index, _key: render_item(item, index),
-        item_extent=item_extent,
-        axis=axis,
-        initial_mask=initial_mask,
-        retained_mask=RenderMask(),
-        window_config=WindowConfig(
-            overscan_viewports=overscan,
-            max_render_ahead_viewports=max_render_ahead_viewports,
-        ),
-        scroll_props=scroll_props,
-        key_for_item=key_for_item,
-    )
-    return render_fixed_virtual_list(spec)
-
-
-@component(key=lambda list_key, *_args: list_key)
-def _keyed_list_component(
-    list_key: Any,
-    data: Sequence[Any],
-    render_item: Callable[[Any, int], Element],
-    key_for_item: Callable[[Any, int], Any] | None,
-    item_extent: float,
-    axis: Literal["vertical", "horizontal"],
-    initial_item_count: int,
-    overscan: float,
-    max_render_ahead_viewports: float,
-    controller: ListController | None,
-    scroll_props: FrozenMap,
-) -> Element:
-    """Keep hook and controller identity with a keyed list occurrence."""
-    return _list_component(
-        list_key,
-        data,
-        render_item,
-        key_for_item,
-        item_extent,
-        axis,
-        initial_item_count,
-        overscan,
-        max_render_ahead_viewports,
-        controller,
-        scroll_props,
-    )
 
 
 @component
@@ -431,12 +334,13 @@ def List(
     interactive_scrollbar: bool = True,
     **scroll_props: Any,
 ) -> Element:
-    """Render a fixed-extent virtualized list.
+    """Render a fixed-extent virtualized list on the generic engine.
 
-    Only items inside the selected window are composed; the rest are blank
-    spacers. The window follows the viewport, extends ahead of fast flings
-    using the native projection, and keeps reorders/resizes stable through
-    item keys.
+    ``List`` is a convenience wrapper around :func:`VirtualList` with the
+    built-in :class:`FixedLinearLayout`: cells are composed inside a
+    positioned content Box, the window follows the viewport and extends
+    ahead of fast flings using the native projection, and reorders/resizes
+    stay stable through item keys.
 
     Args:
         data: The items to render. Pass state-derived data to update the
@@ -473,67 +377,21 @@ def List(
         Sequence,
     ):
         raise TypeError("data must be a non-string Sequence")
-    if not callable(render_item):
-        raise TypeError("render_item must be callable")
-    if key_for_item is not None and not callable(key_for_item):
-        raise TypeError("key_for_item must be callable or None")
-    if isinstance(item_extent, bool) or not isinstance(item_extent, int | float):
-        raise TypeError("item_extent must be a number")
-    item_extent_value = float(item_extent)
-    if not math.isfinite(item_extent_value) or item_extent_value < 1:
-        raise ValueError("item_extent must be finite and at least 1 logical unit")
-    if axis not in {"vertical", "horizontal"}:
-        raise ValueError("axis must be 'vertical' or 'horizontal'")
-    if isinstance(overscan, bool) or not isinstance(overscan, int | float):
-        raise TypeError("overscan must be a number")
-    overscan_value = float(overscan)
-    if not math.isfinite(overscan_value) or overscan_value < 0:
-        raise ValueError("overscan must be a finite non-negative number")
-    if isinstance(max_render_ahead_viewports, bool) or not isinstance(
-        max_render_ahead_viewports,
-        int | float,
-    ):
-        raise TypeError("max_render_ahead_viewports must be a number")
-    render_ahead_value = float(max_render_ahead_viewports)
-    if not math.isfinite(render_ahead_value) or render_ahead_value < 0:
-        raise ValueError(
-            "max_render_ahead_viewports must be a finite non-negative number"
-        )
-    if type(initial_item_count) is not int:
-        raise TypeError("initial_item_count must be an integer")
-    if initial_item_count < 0:
-        raise ValueError("initial_item_count must be non-negative")
-    if controller is not None and not isinstance(controller, ListController):
-        raise TypeError("controller must be ListController or None")
-    if type(interactive_scrollbar) is not bool:
-        raise TypeError("interactive_scrollbar must be a boolean")
-    reserved = {
-        "on_scroll_metrics",
-        "on_scroll_seek",
-        "ref",
-        "_virtual_list_initial_offset",
-    }.intersection(scroll_props)
-    if reserved:
-        names = ", ".join(sorted(reserved))
-        raise ValueError(f"The virtual-list controller owns {names}")
-
-    scroll_props["interactive_scrollbar"] = interactive_scrollbar
-    if key is None:
-        component: Callable[..., Element] = _list_component
-    else:
-        component = _keyed_list_component
-    return component(
-        key,
+    layout = FixedLinearLayout(item_extent, axis)
+    return VirtualList(
         data,
-        render_item,
-        key_for_item,
-        item_extent,
-        axis,
-        initial_item_count,
-        overscan,
-        max_render_ahead_viewports,
-        controller,
-        FrozenMap(scroll_props.items()),
+        render_item=render_item,
+        layout=layout,
+        key_for_item=key_for_item,
+        axis=axis,
+        overscan=overscan,
+        max_render_ahead_viewports=max_render_ahead_viewports,
+        initial_item_count=initial_item_count,
+        max_offscreen_items=0,
+        controller=controller,
+        key=key,
+        interactive_scrollbar=interactive_scrollbar,
+        **scroll_props,
     )
 
 

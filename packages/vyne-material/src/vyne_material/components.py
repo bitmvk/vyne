@@ -18,11 +18,7 @@ from vyne.elements import Box, Canvas, Column
 from vyne.elements import Element, Row, TextInput
 from vyne.component import component
 from vyne.events import latest
-from vyne_material._callbacks import (
-    normalize_selection,
-    prepare_handler,
-    prepare_value_binding,
-)
+from vyne_material._callbacks import normalize_selection
 from vyne_material._foundation import (
     alpha,
     checkmark_canvas,
@@ -457,8 +453,7 @@ def ButtonGroup(
     theme: MaterialTheme = DEFAULT_THEME,
     **props: Any,
 ) -> Element:
-    # One adapter per composite callback (MATERIAL-02).
-    on_select_adapter = prepare_value_binding(on_select) if on_select is not None else None
+    # Selection callbacks receive the proposed next value directly.
     normalized = normalize_selection(
         selected,
         [item.value for item in items],
@@ -489,12 +484,14 @@ def ButtonGroup(
             }
         else:
             radius_props = {}
-        # Reuse the one adapter via a lightweight closure (no re-inspection).
+        # Reuse the callback via a lightweight closure.
         def _make_handler(val: Any) -> Callback | None:
-            if on_select_adapter is None:
+            if on_select is None:
                 return None
+
             def _h(_event: Any) -> None:
-                on_select_adapter.invoke(val)
+                on_select(val)
+
             return _h
         children.append(
             Button(
@@ -1621,7 +1618,6 @@ def SegmentedButtonGroup(
     # segment enough room for its selected icon, label, and horizontal inset;
     # callers can still provide a wider explicit width.
     props.setdefault("width", max(80, len(items) * 80))
-    on_select_adapter = prepare_value_binding(on_select) if on_select is not None else None
     item_values = [item.value for item in items]
     normalized = normalize_selection(selected, item_values, multi=multi_select)
     selected_values: set[Any] = set(normalized) if multi_select and normalized else {normalized} if normalized is not None else set()
@@ -1635,11 +1631,14 @@ def SegmentedButtonGroup(
             )
         else:
             next_selection = item.value
+
         def _make_handler(val: Any) -> Callback | None:
-            if on_select_adapter is None:
+            if on_select is None:
                 return None
+
             def _h(_event: Any) -> None:
-                on_select_adapter.invoke(val)
+                on_select(val)
+
             return _h
         children.append(
             SegmentedButton(
@@ -1732,8 +1731,7 @@ def Slider(
     )
 
     # ---- mount-local gesture state (MATERIAL-01) ----------------------------
-    adapter = prepare_value_binding(on_change) if on_change is not None else None
-    gesture = SliderGesture(spec, adapter)
+    gesture = SliderGesture(spec, on_change)
 
     def _on_pointer_down(event: Any) -> None:
         gesture.down("single", float(event.get("x", thumb_x)))
@@ -1862,8 +1860,7 @@ def RangeSlider(
     midpoint_x = (start_x + end_x) / 2
 
     # ---- mount-local gesture state (MATERIAL-01) ----------------------------
-    adapter = prepare_value_binding(on_change) if on_change is not None else None
-    range_gesture = RangeSliderGesture(spec, adapter, start, end)
+    range_gesture = RangeSliderGesture(spec, on_change, start, end)
 
     def _make_handler(method: Any, offset: float = 0.0) -> Any:
         def _h(event: Any) -> None:
@@ -1947,12 +1944,7 @@ def TextField(
         if label and (focused or value)
         else None
     )
-    # One-time callback adapter (MATERIAL-02): inspect each callback once,
-    # then route the appropriate event value through the adapter.
-    text_adapter = prepare_value_binding(on_text_change) if on_text_change is not None else None
-    editor_adapter = prepare_value_binding(on_editor_action) if on_editor_action is not None else None
-    focus_adapter = prepare_value_binding(on_focus_change) if on_focus_change is not None else None
-
+    # Controlled callbacks receive the proposed next value directly.
     input_props: dict[str, Any] = {
         "text": value,
         "hint": placeholder or (label if not floating_label else ""),
@@ -1966,18 +1958,18 @@ def TextField(
         "width": 0,
         "lp_weight": 1,
         "on_text_change": (
-            (lambda event: text_adapter.invoke(event.get("text", "")))
-            if text_adapter is not None
+            (lambda event: on_text_change(event.get("text", "")))
+            if on_text_change is not None
             else None
         ),
         "on_editor_action": (
-            (lambda event: editor_adapter.invoke(event.get("text", value)))
-            if editor_adapter is not None
+            (lambda event: on_editor_action(event.get("text", value)))
+            if on_editor_action is not None
             else None
         ),
         "on_focus_change": (
-            (lambda event: focus_adapter.invoke(bool(event.get("has_focus"))))
-            if focus_adapter is not None
+            (lambda event: on_focus_change(bool(event.get("has_focus"))))
+            if on_focus_change is not None
             else None
         ),
     }
@@ -2094,11 +2086,7 @@ def SearchBar(
     theme: MaterialTheme = DEFAULT_THEME,
     **props: Any,
 ) -> Element:
-    # One-time callback adapter (MATERIAL-02) same path as TextField.
-    query_adapter = prepare_value_binding(on_query_change) if on_query_change is not None else None
-    search_adapter = prepare_value_binding(on_search) if on_search is not None else None
-    expand_adapter = prepare_value_binding(on_expanded_change) if on_expanded_change is not None else None
-
+    # Controlled callbacks receive the proposed next value directly.
     input_element = TextInput(
         text=query,
         hint=placeholder,
@@ -2108,18 +2096,18 @@ def SearchBar(
         width=0,
         lp_weight=1,
         on_text_change=(
-            (lambda event: query_adapter.invoke(event.get("text", "")))
-            if query_adapter is not None
+            (lambda event: on_query_change(event.get("text", "")))
+            if on_query_change is not None
             else None
         ),
         on_editor_action=(
-            (lambda event: search_adapter.invoke(event.get("text", query)))
-            if search_adapter is not None
+            (lambda event: on_search(event.get("text", query)))
+            if on_search is not None
             else None
         ),
         on_focus_change=(
-            (lambda event: expand_adapter.invoke(bool(event.get("has_focus"))))
-            if expand_adapter is not None
+            (lambda event: on_expanded_change(bool(event.get("has_focus"))))
+            if on_expanded_change is not None
             else None
         ),
     )
@@ -2747,7 +2735,7 @@ def Tooltip(
                 padding_bottom=4,
                 corner_radius=theme.shapes.extra_small,
                 background_color=theme.colors.inverse_surface,
-                on_click=prepare_handler(on_dismiss, False),
+                on_click=value_handler(on_dismiss, False),
             )
     children = [bubble, anchor_host] if placement == "above" else [anchor_host, bubble]
     return spaced_column(children, 4, align_items="center", **props)

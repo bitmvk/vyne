@@ -275,41 +275,11 @@ internal fun parseColorString(hex: String): Int {
 // Property applicator table
 // ─────────────────────────────────────────────────────────────────────────
 
-/**
- * Narrow property-mechanics surface. Applicators cannot reach transaction,
- * event, tree-publication, or animation internals through this interface.
- */
-internal interface PropertyHost {
-    val viewStates: MutableMap<Int, Renderer.ViewState>
-
-    fun stateFor(id: Int): Renderer.ViewState
-    fun updateNodeLayoutRaw(id: Int, update: Renderer.NodeLayout.() -> Unit)
-    fun updateNodeLayoutPx(id: Int, update: Renderer.NodeLayout.() -> Unit)
-    fun updateBasePadding(
-        id: Int,
-        view: View,
-        update: Renderer.EdgeInsets.() -> Renderer.EdgeInsets,
-    )
-    fun updateCornerRadii(
-        id: Int,
-        view: View,
-        update: Renderer.CornerRadii.() -> Unit,
-    )
-    fun updateOverflow(id: Int, view: View, overflow: String?)
-    fun updateAccessibility(id: Int, view: View)
-    fun updateBackground(id: Int, view: View)
-    fun installSafeArea(id: Int, view: View)
-    fun removeSafeArea(id: Int, view: View)
-    fun updateLayoutGravity(id: Int, view: View)
-    fun updateTextInputFocus(view: EditText, focused: Boolean)
-    fun updateEditorActionListener(id: Int, view: EditText)
-}
-
 /** Context passed to one property applicator invocation. */
 internal class ApplicatorContext(
     val id: Int,
     val view: View,
-    val host: PropertyHost,
+    val renderer: Renderer,
 )
 
 /**
@@ -388,19 +358,19 @@ internal object PropertyTable {
         register(PropApplicator("width",
             set = { ctx, value ->
                 val dim = decodeDimension(value, ctx.view.resources.displayMetrics.density)
-                ctx.host.updateNodeLayoutRaw(ctx.id) { width = dim }
+                ctx.renderer.updateNodeLayoutRaw(ctx.id) { width = dim }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutRaw(ctx.id) { width = DimensionValue.Invalid }
+                ctx.renderer.updateNodeLayoutRaw(ctx.id) { width = DimensionValue.Invalid }
             },
         ))
         register(PropApplicator("height",
             set = { ctx, value ->
                 val dim = decodeDimension(value, ctx.view.resources.displayMetrics.density)
-                ctx.host.updateNodeLayoutRaw(ctx.id) { height = dim }
+                ctx.renderer.updateNodeLayoutRaw(ctx.id) { height = dim }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutRaw(ctx.id) { height = DimensionValue.Invalid }
+                ctx.renderer.updateNodeLayoutRaw(ctx.id) { height = DimensionValue.Invalid }
             },
         ))
         register(PropApplicator("min_width",
@@ -574,168 +544,168 @@ internal object PropertyTable {
         // -- Padding -----------------------------------------------------
         register(PropApplicator("padding_top",
             set = { ctx, value ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) {
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) {
                     copy(top = dimensionToPx(value, ctx.view.resources.displayMetrics.density))
                 }
             },
             remove = { ctx ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) { copy(top = 0) }
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) { copy(top = 0) }
             },
         ))
         register(PropApplicator("padding_bottom",
             set = { ctx, value ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) {
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) {
                     copy(bottom = dimensionToPx(value, ctx.view.resources.displayMetrics.density))
                 }
             },
             remove = { ctx ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) { copy(bottom = 0) }
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) { copy(bottom = 0) }
             },
         ))
         register(PropApplicator("padding_start",
             set = { ctx, value ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) {
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) {
                     copy(left = dimensionToPx(value, ctx.view.resources.displayMetrics.density))
                 }
             },
             remove = { ctx ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) { copy(left = 0) }
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) { copy(left = 0) }
             },
         ))
         register(PropApplicator("padding_end",
             set = { ctx, value ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) {
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) {
                     copy(right = dimensionToPx(value, ctx.view.resources.displayMetrics.density))
                 }
             },
             remove = { ctx ->
-                ctx.host.updateBasePadding(ctx.id, ctx.view) { copy(right = 0) }
+                ctx.renderer.updateBasePadding(ctx.id, ctx.view) { copy(right = 0) }
             },
         ))
 
         // -- Margins -----------------------------------------------------
         register(PropApplicator("margin_top",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginTop = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginTop = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginTop = 0 }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginTop = 0 }
             },
         ))
         register(PropApplicator("margin_bottom",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginBottom = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginBottom = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginBottom = 0 }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginBottom = 0 }
             },
         ))
         register(PropApplicator("margin_start",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginStart = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginStart = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginStart = 0 }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginStart = 0 }
             },
         ))
         register(PropApplicator("margin_end",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginEnd = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginEnd = dimensionToPx(value, ctx.view.resources.displayMetrics.density) }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { marginEnd = 0 }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { marginEnd = 0 }
             },
         ))
 
         // -- Background / border -----------------------------------------
         register(PropApplicator("background_color",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).backgroundColor = decodeColor(value)
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).backgroundColor = decodeColor(value)
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).backgroundColor = null
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).backgroundColor = null
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("border_width",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).borderWidth = dimensionToPx(value, ctx.view.resources.displayMetrics.density)
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).borderWidth = dimensionToPx(value, ctx.view.resources.displayMetrics.density)
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).borderWidth = 0
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).borderWidth = 0
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("border_color",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).borderColor = decodeColor(value)
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).borderColor = decodeColor(value)
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).borderColor = null
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).borderColor = null
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("ripple_color",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).rippleColor = decodeColor(value)
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).rippleColor = decodeColor(value)
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).rippleColor = null
-                ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).rippleColor = null
+                ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
 
         // -- Corner radii ------------------------------------------------
         register(PropApplicator("corner_radius_top_left",
             set = { ctx, value ->
-                ctx.host.updateCornerRadii(ctx.id, ctx.view) {
+                ctx.renderer.updateCornerRadii(ctx.id, ctx.view) {
                     topLeft = dimensionToPx(value, ctx.view.resources.displayMetrics.density).toFloat()
                 }
             },
             remove = { ctx ->
-                ctx.host.viewStates[ctx.id]?.cornerRadii?.let {
-                    ctx.host.updateCornerRadii(ctx.id, ctx.view) { topLeft = 0f }
-                } ?: ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.viewStates[ctx.id]?.cornerRadii?.let {
+                    ctx.renderer.updateCornerRadii(ctx.id, ctx.view) { topLeft = 0f }
+                } ?: ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("corner_radius_top_right",
             set = { ctx, value ->
-                ctx.host.updateCornerRadii(ctx.id, ctx.view) {
+                ctx.renderer.updateCornerRadii(ctx.id, ctx.view) {
                     topRight = dimensionToPx(value, ctx.view.resources.displayMetrics.density).toFloat()
                 }
             },
             remove = { ctx ->
-                ctx.host.viewStates[ctx.id]?.cornerRadii?.let {
-                    ctx.host.updateCornerRadii(ctx.id, ctx.view) { topRight = 0f }
-                } ?: ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.viewStates[ctx.id]?.cornerRadii?.let {
+                    ctx.renderer.updateCornerRadii(ctx.id, ctx.view) { topRight = 0f }
+                } ?: ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("corner_radius_bottom_right",
             set = { ctx, value ->
-                ctx.host.updateCornerRadii(ctx.id, ctx.view) {
+                ctx.renderer.updateCornerRadii(ctx.id, ctx.view) {
                     bottomRight = dimensionToPx(value, ctx.view.resources.displayMetrics.density).toFloat()
                 }
             },
             remove = { ctx ->
-                ctx.host.viewStates[ctx.id]?.cornerRadii?.let {
-                    ctx.host.updateCornerRadii(ctx.id, ctx.view) { bottomRight = 0f }
-                } ?: ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.viewStates[ctx.id]?.cornerRadii?.let {
+                    ctx.renderer.updateCornerRadii(ctx.id, ctx.view) { bottomRight = 0f }
+                } ?: ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("corner_radius_bottom_left",
             set = { ctx, value ->
-                ctx.host.updateCornerRadii(ctx.id, ctx.view) {
+                ctx.renderer.updateCornerRadii(ctx.id, ctx.view) {
                     bottomLeft = dimensionToPx(value, ctx.view.resources.displayMetrics.density).toFloat()
                 }
             },
             remove = { ctx ->
-                ctx.host.viewStates[ctx.id]?.cornerRadii?.let {
-                    ctx.host.updateCornerRadii(ctx.id, ctx.view) { bottomLeft = 0f }
-                } ?: ctx.host.updateBackground(ctx.id, ctx.view)
+                ctx.renderer.viewStates[ctx.id]?.cornerRadii?.let {
+                    ctx.renderer.updateCornerRadii(ctx.id, ctx.view) { bottomLeft = 0f }
+                } ?: ctx.renderer.updateBackground(ctx.id, ctx.view)
             },
         ))
 
@@ -784,84 +754,84 @@ internal object PropertyTable {
                 val role = value?.toString()?.lowercase()
                 // "none" explicitly means no role — clear accessibility.
                 if (role == null || role == "none" || role.isEmpty()) {
-                    ctx.host.stateFor(ctx.id).accessibilityRole = null
+                    ctx.renderer.stateFor(ctx.id).accessibilityRole = null
                 } else {
-                    ctx.host.stateFor(ctx.id).accessibilityRole = role
+                    ctx.renderer.stateFor(ctx.id).accessibilityRole = role
                 }
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityRole = null
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRole = null
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_selected",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityStateSelected = when (value) {
+                ctx.renderer.stateFor(ctx.id).accessibilityStateSelected = when (value) {
                     is Boolean -> value
                     "true" -> true
                     "false" -> false
                     else -> false
                 }
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityStateSelected = false
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityStateSelected = false
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_checked",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityStateChecked = when (value) {
+                ctx.renderer.stateFor(ctx.id).accessibilityStateChecked = when (value) {
                     is Boolean -> if (value) "checked" else "unchecked"
                     is String -> value.lowercase()
                     else -> value?.toString()?.lowercase()
                 }
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityStateChecked = null
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityStateChecked = null
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_state_description",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityStateDescription = value?.toString()
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityStateDescription = value?.toString()
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityStateDescription = null
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityStateDescription = null
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_range_min",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeMin = (value as? Number)?.toFloat() ?: 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeMin = (value as? Number)?.toFloat() ?: 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeMin = 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeMin = 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_range_max",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeMax = (value as? Number)?.toFloat() ?: 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeMax = (value as? Number)?.toFloat() ?: 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeMax = 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeMax = 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("accessibility_range_current",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeCurrent = (value as? Number)?.toFloat() ?: 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeCurrent = (value as? Number)?.toFloat() ?: 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
             remove = { ctx ->
-                ctx.host.stateFor(ctx.id).accessibilityRangeCurrent = 0f
-                ctx.host.updateAccessibility(ctx.id, ctx.view)
+                ctx.renderer.stateFor(ctx.id).accessibilityRangeCurrent = 0f
+                ctx.renderer.updateAccessibility(ctx.id, ctx.view)
             },
         ))
 
@@ -972,59 +942,59 @@ internal object PropertyTable {
             kindApplicable = setOf("Box", "Layout", "Scroll", "HorizontalScroll"),
             set = { ctx, value ->
                 (ctx.view as? RoundedLinearLayout)?.alignItems = value?.toString()
-                ctx.host.updateLayoutGravity(ctx.id, ctx.view)
+                ctx.renderer.updateLayoutGravity(ctx.id, ctx.view)
             },
             remove = { ctx ->
                 (ctx.view as? RoundedLinearLayout)?.alignItems = null
-                ctx.host.updateLayoutGravity(ctx.id, ctx.view)
+                ctx.renderer.updateLayoutGravity(ctx.id, ctx.view)
             },
         ))
         register(PropApplicator("justify_content",
             kindApplicable = setOf("Box", "Layout", "Scroll", "HorizontalScroll"),
             set = { ctx, value ->
                 (ctx.view as? RoundedLinearLayout)?.justifyContent = value?.toString()
-                ctx.host.updateLayoutGravity(ctx.id, ctx.view)
+                ctx.renderer.updateLayoutGravity(ctx.id, ctx.view)
             },
             remove = { ctx ->
                 (ctx.view as? RoundedLinearLayout)?.justifyContent = null
-                ctx.host.updateLayoutGravity(ctx.id, ctx.view)
+                ctx.renderer.updateLayoutGravity(ctx.id, ctx.view)
             },
         ))
 
         // -- lp_weight and lp_gravity (on children) ----------------------
         register(PropApplicator("lp_weight",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { lpWeight = (value as? Number)?.toFloat() }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { lpWeight = (value as? Number)?.toFloat() }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { lpWeight = null }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { lpWeight = null }
             },
         ))
         register(PropApplicator("lp_gravity",
             set = { ctx, value ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { lpGravity = parseGravityStatic(value) }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { lpGravity = parseGravityStatic(value) }
             },
             remove = { ctx ->
-                ctx.host.updateNodeLayoutPx(ctx.id) { lpGravity = null }
+                ctx.renderer.updateNodeLayoutPx(ctx.id) { lpGravity = null }
             },
         ))
 
         // -- Pointer -----------------------------------------------------
         register(PropApplicator("pointer_capture_axis",
             set = { ctx, value ->
-                ctx.host.stateFor(ctx.id).pointerCaptureAxis = value?.toString()?.lowercase()
+                ctx.renderer.stateFor(ctx.id).pointerCaptureAxis = value?.toString()?.lowercase()
             },
-            remove = { ctx -> ctx.host.stateFor(ctx.id).pointerCaptureAxis = null },
+            remove = { ctx -> ctx.renderer.stateFor(ctx.id).pointerCaptureAxis = null },
         ))
 
         // -- Overflow ----------------------------------------------------
         register(PropApplicator("overflow",
             kindApplicable = setOf("Box", "Layout", "Scroll", "HorizontalScroll"),
             set = { ctx, value ->
-                ctx.host.updateOverflow(ctx.id, ctx.view, value?.toString())
+                ctx.renderer.updateOverflow(ctx.id, ctx.view, value?.toString())
             },
             remove = { ctx ->
-                ctx.host.updateOverflow(ctx.id, ctx.view, "hidden")
+                ctx.renderer.updateOverflow(ctx.id, ctx.view, "hidden")
             },
         ))
 
@@ -1035,12 +1005,12 @@ internal object PropertyTable {
         register(PropApplicator("safe_area",
             set = { ctx, value ->
                 if (value as? Boolean ?: false) {
-                    ctx.host.installSafeArea(ctx.id, ctx.view)
+                    ctx.renderer.installSafeArea(ctx.id, ctx.view)
                 } else {
-                    ctx.host.removeSafeArea(ctx.id, ctx.view)
+                    ctx.renderer.removeSafeArea(ctx.id, ctx.view)
                 }
             },
-            remove = { ctx -> ctx.host.removeSafeArea(ctx.id, ctx.view) },
+            remove = { ctx -> ctx.renderer.removeSafeArea(ctx.id, ctx.view) },
         ))
 
         // -- TextInput-specific generic props ----------------------------
@@ -1049,13 +1019,13 @@ internal object PropertyTable {
             kindApplicable = setOf("TextInput"),
             set = { ctx, value ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).controlledFocus = value as? Boolean ?: false
-                    ctx.host.updateTextInputFocus(ctx.view, ctx.host.stateFor(ctx.id).controlledFocus == true)
+                    ctx.renderer.stateFor(ctx.id).controlledFocus = value as? Boolean ?: false
+                    ctx.renderer.updateTextInputFocus(ctx.view, ctx.renderer.stateFor(ctx.id).controlledFocus == true)
                 }
             },
             remove = { ctx ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).controlledFocus = null
+                    ctx.renderer.stateFor(ctx.id).controlledFocus = null
                 }
             },
         ))
@@ -1063,12 +1033,12 @@ internal object PropertyTable {
             kindApplicable = setOf("TextInput"),
             set = { ctx, value ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnKeyboardHide = value as? Boolean ?: false
+                    ctx.renderer.stateFor(ctx.id).blurOnKeyboardHide = value as? Boolean ?: false
                 }
             },
             remove = { ctx ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnKeyboardHide = false
+                    ctx.renderer.stateFor(ctx.id).blurOnKeyboardHide = false
                 }
             },
         ))
@@ -1076,12 +1046,12 @@ internal object PropertyTable {
             kindApplicable = setOf("TextInput"),
             set = { ctx, value ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnTapOutside = value as? Boolean ?: false
+                    ctx.renderer.stateFor(ctx.id).blurOnTapOutside = value as? Boolean ?: false
                 }
             },
             remove = { ctx ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnTapOutside = false
+                    ctx.renderer.stateFor(ctx.id).blurOnTapOutside = false
                 }
             },
         ))
@@ -1089,14 +1059,14 @@ internal object PropertyTable {
             kindApplicable = setOf("TextInput"),
             set = { ctx, value ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnSubmit = value as? Boolean ?: false
-                    ctx.host.updateEditorActionListener(ctx.id, ctx.view)
+                    ctx.renderer.stateFor(ctx.id).blurOnSubmit = value as? Boolean ?: false
+                    ctx.renderer.updateEditorActionListener(ctx.id, ctx.view)
                 }
             },
             remove = { ctx ->
                 if (ctx.view is EditText) {
-                    ctx.host.stateFor(ctx.id).blurOnSubmit = false
-                    ctx.host.updateEditorActionListener(ctx.id, ctx.view)
+                    ctx.renderer.stateFor(ctx.id).blurOnSubmit = false
+                    ctx.renderer.updateEditorActionListener(ctx.id, ctx.view)
                 }
             },
         ))

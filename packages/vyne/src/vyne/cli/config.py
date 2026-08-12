@@ -21,8 +21,6 @@ import re
 from pathlib import Path
 from typing import Mapping
 
-from packaging.version import Version as Pep440Version, InvalidVersion
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -405,11 +403,24 @@ def validate_module(module: str) -> None:
         )
 
 
+# PEP 440 version grammar (spec §2) implemented with stdlib ``re`` so the
+# CLI has no runtime dependency on ``packaging``.
+_PEP440_RE = re.compile(
+    r"^\s*v?"
+    r"(?:(?P<epoch>[0-9]+)!)?"
+    r"(?P<release>[0-9]+(?:\.[0-9]+)*)"
+    r"(?P<pre>[-_\.]?(?P<pre_l>a|b|c|rc|alpha|beta|pre|preview)[-_\\.]?(?P<pre_n>[0-9]+)?)?"
+    r"(?P<post>(?:-(?P<post_n1>[0-9]+))|(?:[-_\\.]?(?P<post_l>post|rev|r)[-_\\.]?(?P<post_n2>[0-9]+)?))?"
+    r"(?P<dev>[-_\\.]?(?P<dev_l>dev)[-_\\.]?(?P<dev_n>[0-9]+)?)?"
+    r"(?:\+(?P<local>[a-z0-9]+(?:[-_\\.][a-z0-9]+)*))?"
+    r"\s*$",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
 def validate_pep440(version: str, path: str) -> None:
     """Reject versions that are not valid PEP 440 strings."""
-    try:
-        Pep440Version(version)
-    except InvalidVersion as exc:
+    if _PEP440_RE.match(version) is None:
         raise RuntimeError(
-            f"{path} ({version!r}) is not a valid PEP 440 version: {exc}"
-        ) from exc
+            f"{path} ({version!r}) is not a valid PEP 440 version"
+        )

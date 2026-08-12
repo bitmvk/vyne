@@ -5,7 +5,6 @@ from datetime import date
 
 from vyne import Column, Text
 from vyne_material import (
-    MATERIAL3_CATALOG,
     Badge,
     BottomAppBar,
     BottomSheet,
@@ -58,51 +57,7 @@ from vyne_material import (
 from vyne.runtime import Runtime
 
 
-EXPECTED_CATALOG = {
-    "app-bars",
-    "badges",
-    "bottom-sheets",
-    "button-groups",
-    "buttons",
-    "cards",
-    "carousel",
-    "checkbox",
-    "chips",
-    "date-pickers",
-    "dialogs",
-    "divider",
-    "extended-fab",
-    "fab-menu",
-    "floating-action-button",
-    "icon-buttons",
-    "lists",
-    "loading-indicator",
-    "menus",
-    "navigation-bar",
-    "navigation-drawer",
-    "navigation-rail",
-    "progress-indicators",
-    "radio-button",
-    "search",
-    "segmented-buttons",
-    "side-sheets",
-    "sliders",
-    "snackbar",
-    "split-button",
-    "switch",
-    "tabs",
-    "text-fields",
-    "time-pickers",
-    "toolbars",
-    "tooltips",
-}
-
-
 class MaterialCatalogTests(unittest.TestCase):
-    def test_catalog_has_every_current_material_3_family(self):
-        self.assertEqual(set(MATERIAL3_CATALOG), EXPECTED_CATALOG)
-        self.assertEqual(len(MATERIAL3_CATALOG), 36)
-
     def test_every_family_lowers_to_existing_renderer_primitives(self):
         navigation_items = [NavigationItem("Home", "H"), NavigationItem("Saved", "S")]
         components = [
@@ -487,7 +442,6 @@ class MaterialValidationTests(unittest.TestCase):
             Slider(0.5, maximum=True)
 
     def test_slider_rejects_nonfinite_values(self):
-        import math
         with self.assertRaises(ValueError):
             Slider(float('nan'))
         with self.assertRaises(ValueError):
@@ -552,17 +506,20 @@ class MaterialValidationTests(unittest.TestCase):
 class MaterialCallbackTests(unittest.TestCase):
     """MATERIAL-02: Component-wiring callback behavior."""
 
-    def test_checkbox_callback_construction_time_no_error(self):
-        """Checkbox with a no-argument callback should construct without error."""
-        called = [False]
-
-        def toggle():
-            called[0] = True
-
-        checkbox = Checkbox(False, on_change=toggle)
-        # Simulate click
+    def test_checkbox_callback_requires_value_argument(self):
+        """Controlled callbacks receive the proposed value directly."""
+        received: list[object] = []
+        checkbox = Checkbox(False, on_change=received.append)
         checkbox.props["on_click"](None)
-        self.assertTrue(called[0])
+        self.assertEqual(received, [True])
+
+        # Zero-argument callbacks are not adapted for controlled props;
+        # they fail at event time with a TypeError.
+        def toggle():
+            pass
+
+        with self.assertRaises(TypeError):
+            Checkbox(False, on_change=toggle).props["on_click"](None)
 
     def test_radio_button_passes_value(self):
         received: list[object] = []

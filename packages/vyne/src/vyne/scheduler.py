@@ -236,9 +236,6 @@ class _AcceptedState:
     node_index: dict[int, Any]  # dict[int, RenderNode]
     revision: int
     next_node_id: int
-    ref_map: dict[int, Any]  # dict[int, Ref]
-    event_registry: Any | None = None
-    imperative_bindings: dict[Any, Any] | None = None
 
 
 class CommitCoordinator:
@@ -468,9 +465,6 @@ class CommitCoordinator:
                 node_index=self._candidate_index or {},
                 revision=revision,
                 next_node_id=self._next_node_id,
-                ref_map=dict(new_refs),
-                event_registry=self._accepted_event_registry,
-                imperative_bindings=dict(new_bindings),
             )
             self._last_ref_transition = (old_refs, new_refs)
             self._last_imperative_transition = (old_bindings, new_bindings)
@@ -486,9 +480,6 @@ class CommitCoordinator:
                 node_index=self._accepted.node_index,
                 revision=revision,
                 next_node_id=self._next_node_id,
-                ref_map=dict(self._ref_map),
-                event_registry=self._accepted_event_registry,
-                imperative_bindings=dict(self._imperative_bindings),
             )
 
         # Clear pending state.

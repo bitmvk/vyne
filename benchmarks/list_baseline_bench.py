@@ -2,9 +2,8 @@
 """Vyne fixed-``List`` performance benchmark harness.
 
 Measures the fixed-extent virtualized list (``vyne.List``) end to end through
-the real Runtime/transport pipeline, plus pure-planner and source-adapter
-costs, so a future list implementation can be compared against a
-reproducible baseline.
+the real Runtime/transport pipeline, plus source-adapter costs, so future
+changes can be compared against a reproducible baseline.
 
 The harness is reproducible from M0 forward: run it once per worktree state
 and store one JSON per state.  The pre-M0 baseline numbers were captured by
@@ -49,40 +48,20 @@ if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
 from vyne import Column, List, Text, state  # noqa: E402
-from vyne._lists import (  # noqa: E402
-    FixedExtentLayout,
-    FixedVirtualListController,
-    FixedVirtualListSpec,
-    IndexRange,
-    RenderMask,
-    SequenceDataSource,
-    ViewportMetrics,
-    WindowConfig,
-    compose_fixed_window,
-    plan_mask,
-    select_window,
-)
-from vyne._lists.fixed import _capped_planning_viewport  # noqa: E402
+from vyne._lists import SequenceDataSource  # noqa: E402
 from vyne.lists import FixedLinearLayout, VirtualList  # noqa: E402
 from vyne.runtime import Runtime  # noqa: E402
 from vyne.transport import MemoryTransport  # noqa: E402
 
 # The public default is a bounded projection of 3 viewports.
 PUBLIC_MAX_AHEAD = 3.0
-DEFAULT_CONFIG = WindowConfig(overscan_viewports=1)
-CAP_CONFIG = WindowConfig(
-    overscan_viewports=1, max_render_ahead_viewports=PUBLIC_MAX_AHEAD
-)
 
 _SOURCE_FILES = [
     "packages/vyne/src/vyne/_lists/__init__.py",
     "packages/vyne/src/vyne/_lists/_shared.py",
     "packages/vyne/src/vyne/_lists/contracts.py",
-    "packages/vyne/src/vyne/_lists/fixed.py",
     "packages/vyne/src/vyne/_lists/generic.py",
-    "packages/vyne/src/vyne/_lists/model.py",
     "packages/vyne/src/vyne/_lists/source.py",
-    "packages/vyne/src/vyne/_lists/window.py",
     "packages/vyne/src/vyne/lists.py",
 ]
 
@@ -366,67 +345,11 @@ def window_bookkeeping(runtime: Runtime) -> dict[str, Any]:
 
 def bench_pure(samples: int, warmup: int) -> list[dict]:
     out: list[dict] = []
-    layout = FixedExtentLayout(100_000, 10)
-    steady = ViewportMetrics(5000, 100)
-    projected = ViewportMetrics(50_000, 100)
-    actual = ViewportMetrics(0, 100)
-
-    def plan_for(viewport: ViewportMetrics) -> None:
-        plan_mask(layout, select_window(layout, viewport, DEFAULT_CONFIG).mask)
-
-    cases = [
-        (
-            "P1 select_window steady 100k",
-            200,
-            lambda: select_window(layout, steady, DEFAULT_CONFIG),
-        ),
-        (
-            "P2 select+segments (composed planner) 100k",
-            200,
-            lambda: plan_for(steady),
-        ),
-        (
-            "P5 capped planning (+select) 100k",
-            200,
-            lambda: select_window(
-                layout,
-                _capped_planning_viewport(projected, actual, CAP_CONFIG),
-                CAP_CONFIG,
-            ),
-        ),
-    ]
-    for name, loops, fn in cases:
-        out.append(timed_case(name, fn, samples=samples, warmup=warmup, loops=loops))
-
-    spec = FixedVirtualListSpec(
-        source=SequenceDataSource(tuple(range(1000))),
-        controller=FixedVirtualListController(),
-        render_item=lambda item, index, key: Text(text=str(item)),
-        item_extent=10,
-        axis="vertical",
-        initial_mask=RenderMask.from_ranges(IndexRange(0, 5)),
-        retained_mask=RenderMask(),
-        window_config=DEFAULT_CONFIG,
-        scroll_props={"width": 300, "height": 100},
-    )
-    mask = RenderMask.from_ranges(IndexRange(100, 130))
-    out.append(
-        timed_case(
-            "P6 compose_fixed_window 30-cell mask",
-            lambda: compose_fixed_window(
-                spec, mask, on_scroll_metrics=lambda event: None
-            ),
-            samples=samples,
-            warmup=warmup,
-            loops=50,
-        )
-    )
-
     for count in (1_000, 100_000):
         items = tuple(range(count))
         out.append(
             timed_case(
-                f"P8 SequenceDataSource construction (lazy) n={count}",
+                f"S1 SequenceDataSource construction (lazy) n={count}",
                 lambda items=items: SequenceDataSource(items, lambda item, index: item),
                 samples=samples,
                 warmup=warmup,

@@ -81,7 +81,7 @@ class RendererInstrumentationTest {
     }
 
     @Test
-    fun directStringBatch_usesSharedTypedTransactionPath() {
+    fun directStringUpdatesApplyThroughSharedTransactionPath() {
         val renderer = Renderer(context, TestEventSink())
         try {
             renderer.applyMessage(JSONObject("""
@@ -99,11 +99,8 @@ class RendererInstrumentationTest {
                         revision = 2,
                         operations =
                             listOf(
-                                RenderOperation.SetStringPropBatch(
-                                    intArrayOf(1, 2),
-                                    "text",
-                                    arrayOf("First", "Second"),
-                                ),
+                                RenderOperation.SetProp(1, "text", "First"),
+                                RenderOperation.SetProp(2, "text", "Second"),
                             ),
                     ),
                 )
@@ -123,7 +120,7 @@ class RendererInstrumentationTest {
     }
 
     @Test
-    fun directBatchPreflight_rejectsWholeBatchBeforeMutation() {
+    fun directPreflight_rejectsWholeTransactionBeforeMutation() {
         val renderer = Renderer(context, TestEventSink())
         try {
             renderer.applyMessage(JSONObject("""
@@ -140,11 +137,8 @@ class RendererInstrumentationTest {
                         revision = 2,
                         operations =
                             listOf(
-                                RenderOperation.SetPropBatch(
-                                    intArrayOf(1, 1),
-                                    arrayOf("text", "not_a_real_property"),
-                                    listOf("New", "invalid"),
-                                ),
+                                RenderOperation.SetProp(1, "text", "New"),
+                                RenderOperation.SetProp(1, "not_a_real_property", "invalid"),
                             ),
                     ),
                 )

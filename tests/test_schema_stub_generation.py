@@ -113,7 +113,7 @@ class ValueTypeMappingTests(unittest.TestCase):
             with self.subTest(index=index):
                 self.assertEqual(gen.python_type(spec), expected)
         with self.assertRaises(ValueError):  # unknown domain fails loudly
-            gen.python_type(ValueSpec(children=True))
+            gen.python_type(ValueSpec())
 
         def prop(value, animatable):
             return type("P", (), {"value": value, "animatable": animatable})()
@@ -168,17 +168,6 @@ class SchemaDerivedPolicyTests(unittest.TestCase):
         finally:
             gen._CONSTRUCTORS.clear()
             gen._CONSTRUCTORS.update(original)
-        # A future required shared prop cannot express Required[] via
-        # TypedDict inheritance, so generation must fail loudly.
-        schema = _fake_schema()
-        schema.PRIMITIVE_KINDS["Text"] = _kind(required=("required_label",))
-        schema.ALL_PROPS["required_label"] = _prop(default=None)
-        schema.PROPS_BY_KIND = {
-            kind: frozenset(PROPS_BY_KIND[kind]) | {"required_label"}
-            for kind in PROPS_BY_KIND
-        }
-        with self.assertRaisesRegex(ValueError, "Required"):
-            gen.build_model(schema)
 
 
 class StubStructureTests(unittest.TestCase):

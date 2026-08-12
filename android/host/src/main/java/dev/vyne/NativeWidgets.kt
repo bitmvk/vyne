@@ -354,18 +354,6 @@ internal fun colorProp(
         set(view, if (value == null) default else parseColor(value))
     }
 
-internal fun stringProp(
-    default: String,
-    set: (View, String) -> Unit,
-): (PropContext, View, Any?) -> Unit =
-    { _, view, value -> set(view, value?.toString() ?: default) }
-
-internal fun boolProp(
-    default: Boolean,
-    set: (View, Boolean) -> Unit,
-): (PropContext, View, Any?) -> Unit =
-    { _, view, value -> set(view, value as? Boolean ?: default) }
-
 internal fun parseStrokeCap(value: String?): Paint.Cap {
     return when (value) {
         "round" -> Paint.Cap.ROUND

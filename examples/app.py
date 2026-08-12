@@ -2,23 +2,24 @@
 
 The framework checkout launches this module by default with ``vyne run``.
 It intentionally exercises native-frame animation, asynchronous Python
-callbacks, typed styling, Canvas drawing, controlled inputs, and Material
-components in one small application.
+callbacks, typed styling, Canvas drawing, static and dynamic virtualized lists,
+controlled inputs, and the complete public Material widget set.
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 from vyne import (
-    AppContext,
     Animated,
+    AppContext,
     Box,
     Canvas,
     Column,
     CornerRadius,
     Decoration,
-    LaunchData,
+    List,
     Ref,
     Ripple,
     Row,
@@ -35,21 +36,59 @@ from vyne import (
 from vyne_material import (
     Badge,
     Badged,
+    BottomAppBar,
+    BottomSheet,
     Button,
+    ButtonGroup,
+    ButtonGroupItem,
+    Card,
+    Carousel,
     Checkbox,
     Chip,
+    CircularProgressIndicator,
     ColorScheme,
+    DatePicker,
+    DateRangePicker,
+    Dialog,
+    ExtendedFloatingActionButton,
+    FabMenuItem,
+    FloatingActionButton,
+    FloatingActionButtonMenu,
+    FloatingToolbar,
+    IconButton,
     LinearProgressIndicator,
+    LinearWavyProgressIndicator,
+    ListItem,
+    LoadingIndicator,
+    MaterialDivider,
+    MaterialList,
     MaterialTheme,
+    Menu,
+    MenuItem,
+    NavigationBar,
+    NavigationDrawer,
+    NavigationItem,
+    NavigationRail,
+    RadioButton,
+    RangeSlider,
+    SearchBar,
+    SegmentedButton,
     SegmentedButtonGroup,
     SegmentedItem,
+    SideSheet,
     Slider,
+    Snackbar,
+    SplitButton,
     Switch,
+    Tab,
     TabItem,
     Tabs,
     TextField,
+    TimePicker,
+    Toolbar,
+    Tooltip,
+    TopAppBar,
 )
-
 
 THEME = MaterialTheme(
     colors=ColorScheme(
@@ -871,6 +910,622 @@ def ControlsShowcase():
     )
 
 
+
+_STATIC_LIST_ITEMS = range(30_000)
+_STATIC_LIST_COLORS = ("#6750E8", "#A33E72", "#1B9AAA", "#5D5A72", "#386A20")
+
+
+def _static_list_item(item, _index):
+    color = _STATIC_LIST_COLORS[item % len(_STATIC_LIST_COLORS)]
+    return Column(
+        Text(
+            text=f"Static item {item:,}",
+            font_size=15,
+            text_color="#FFFFFF",
+            include_font_padding=False,
+        ),
+        Text(
+            text="Immutable range · stable key",
+            font_size=11,
+            line_height=16,
+            text_color="#EAE4FF",
+            margin_top=5,
+            include_font_padding=False,
+        ),
+        width="match_parent",
+        height="match_parent",
+        padding=14,
+        margin_end=8,
+        background_color=color,
+        corner_radius=18,
+    )
+
+
+def _dynamic_list_item(item, index):
+    return Row(
+        Box(
+            Text(
+                text=str(index + 1),
+                text_color="#FFFFFF",
+                font_size=13,
+                lp_gravity="center",
+            ),
+            width=38,
+            height=38,
+            background_color=COLORS.primary if index % 2 == 0 else COLORS.tertiary,
+            corner_radius=19,
+        ),
+        Column(
+            Text(
+                text=f"Dynamic item {item}",
+                font_size=15,
+                text_color=COLORS.on_surface,
+                include_font_padding=False,
+            ),
+            Text(
+                text=f"Stable key {item}",
+                font_size=11,
+                text_color=COLORS.on_surface_variant,
+                margin_top=3,
+                include_font_padding=False,
+            ),
+            width=0,
+            lp_weight=1,
+            margin_start=12,
+        ),
+        width="match_parent",
+        height="match_parent",
+        padding_start=12,
+        padding_end=12,
+        align_items="center",
+        background_color=(
+            COLORS.surface_container_lowest
+            if index % 2 == 0
+            else COLORS.surface_container_low
+        ),
+        content_description=f"dynamic-item-{item}",
+    )
+
+
+@component
+def ListsShowcase():
+    items = state(tuple(range(30_000)))
+    next_item = state(30_000)
+
+    def append_item():
+        item = next_item.value
+        next_item.set(item + 1)
+        items.set(items.value + (item,))
+
+    def remove_item():
+        if items.value:
+            items.set(items.value[:-1])
+
+    def reverse_items():
+        items.set(tuple(reversed(items.value)))
+
+    return Column(
+        _title(
+            "Static and dynamic lists",
+            "Both use the same generic virtual-list engine and native scroll mechanics.",
+        ),
+        _card(
+            _eyebrow("Static horizontal data"),
+            Text(
+                text="30,000 immutable items",
+                font_size=18,
+                text_color=COLORS.on_surface,
+                margin_top=4,
+                margin_bottom=12,
+            ),
+            List(
+                _STATIC_LIST_ITEMS,
+                render_item=_static_list_item,
+                key_for_item=lambda item, _index: item,
+                item_extent=140,
+                axis="horizontal",
+                initial_item_count=3,
+                width="match_parent",
+                height=108,
+                key="showcase-static-list",
+                content_description="static-list",
+            ),
+        ),
+        Row(
+            Button(
+                "Add",
+                on_click=append_item,
+                theme=THEME,
+                content_description="dynamic-list-add",
+            ),
+            Button(
+                "Remove",
+                on_click=remove_item,
+                variant="outlined",
+                theme=THEME,
+                margin_start=7,
+                content_description="dynamic-list-remove",
+            ),
+            Button(
+                "Reverse",
+                on_click=reverse_items,
+                variant="text",
+                theme=THEME,
+                margin_start=3,
+                content_description="dynamic-list-reverse",
+            ),
+            align_items="center",
+        ),
+        Text(
+            text=f"{len(items.value):,} state-owned rows · add, remove, or reorder",
+            font_size=12,
+            text_color=COLORS.on_surface_variant,
+            margin_top=9,
+            margin_bottom=10,
+            content_description="dynamic-list-count",
+        ),
+        List(
+            items.value,
+            render_item=_dynamic_list_item,
+            key_for_item=lambda item, _index: item,
+            item_extent=64,
+            initial_item_count=8,
+            width="match_parent",
+            height=0,
+            lp_weight=1,
+            key="showcase-dynamic-list",
+            background_color=COLORS.surface_container_low,
+            corner_radius=18,
+            overflow="hidden",
+            content_description="dynamic-list",
+        ),
+        width="match_parent",
+        height="match_parent",
+        padding_start=16,
+        padding_end=16,
+        padding_top=20,
+        padding_bottom=16,
+        background_color=COLORS.surface,
+        content_description="showcase-lists",
+    )
+
+
+@component
+def MaterialShowcase():
+    toggled = state(True)
+    choice = state("one")
+    carousel_index = state(0)
+    slider_value = state(0.42)
+    range_value = state((0.2, 0.78))
+    field_value = state("Vyne")
+    query = state("native")
+    selected_tab = state(0)
+    selected_date = state(date(2026, 7, 16))
+    selected_range = state((date(2026, 7, 12), date(2026, 7, 18)))
+    selected_time = state((10, 30))
+    selected_time_part = state("hour")
+
+    navigation_items = (
+        NavigationItem("Home", "⌂", badge=3),
+        NavigationItem("Saved", "☆"),
+        NavigationItem("Profile", "●"),
+    )
+
+    return Column(
+        _title(
+            "Every Material widget",
+            "One live example of every public Material constructor, all lowered to core primitives.",
+        ),
+        _card(
+            _eyebrow("App bars"),
+            TopAppBar(
+                "Vyne Material",
+                navigation=IconButton("←", theme=THEME),
+                actions=(IconButton("⋮", theme=THEME),),
+                subtitle="TopAppBar",
+                theme=THEME,
+                width="match_parent",
+            ),
+            BottomAppBar(
+                IconButton("⌂", theme=THEME),
+                IconButton("☆", theme=THEME),
+                floating_action_button=FloatingActionButton("+", theme=THEME),
+                theme=THEME,
+                width="match_parent",
+                margin_top=10,
+            ),
+            content_description="material-app-bars",
+        ),
+        _card(
+            _eyebrow("Badges and buttons"),
+            Row(
+                Badge(7, theme=THEME),
+                Badged(
+                    IconButton("✉", theme=THEME),
+                    Badge(3, theme=THEME),
+                    width=48,
+                    height=48,
+                    margin_start=20,
+                ),
+                IconButton(
+                    "♥",
+                    variant="tonal",
+                    selected=toggled.value,
+                    on_click=lambda: toggled.set(not toggled.value),
+                    theme=THEME,
+                    margin_start=20,
+                ),
+                align_items="center",
+                margin_top=12,
+            ),
+            Row(
+                Button("Filled", theme=THEME),
+                Button("Tonal", variant="tonal", theme=THEME, margin_start=7),
+                Button("Text", variant="text", theme=THEME, margin_start=4),
+                margin_top=10,
+            ),
+            ButtonGroup(
+                (
+                    ButtonGroupItem("One", "one"),
+                    ButtonGroupItem("Two", "two"),
+                ),
+                selected=choice.value,
+                on_select=choice.set,
+                connected=True,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            Row(
+                FloatingActionButton("+", theme=THEME),
+                ExtendedFloatingActionButton(
+                    "Create",
+                    icon="+",
+                    theme=THEME,
+                    margin_start=10,
+                ),
+                align_items="center",
+                margin_top=12,
+            ),
+            FloatingActionButtonMenu(
+                (
+                    FabMenuItem("Create", "+"),
+                    FabMenuItem("Edit", "✎"),
+                ),
+                expanded=True,
+                theme=THEME,
+                margin_top=12,
+            ),
+            SplitButton(
+                "Save",
+                expanded=toggled.value,
+                on_menu_click=toggled.set,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            content_description="material-buttons",
+        ),
+        _card(
+            _eyebrow("Cards, carousel and dialog"),
+            Card(
+                Text(text="Card", text_color=COLORS.on_surface),
+                Text(
+                    text="Elevated Python-owned surface",
+                    text_color=COLORS.on_surface_variant,
+                    font_size=12,
+                    margin_top=4,
+                ),
+                theme=THEME,
+                width="match_parent",
+                margin_top=10,
+            ),
+            Carousel(
+                Box(
+                    Text(text="First", text_color="#FFFFFF", lp_gravity="center"),
+                    height=82,
+                    background_color=COLORS.primary,
+                ),
+                Box(
+                    Text(text="Second", text_color="#FFFFFF", lp_gravity="center"),
+                    height=82,
+                    background_color=COLORS.tertiary,
+                ),
+                active_index=carousel_index.value,
+                on_index_change=carousel_index.set,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            Dialog(
+                Text(text="Dialog body", text_color=COLORS.on_surface),
+                title="Dialog",
+                icon="!",
+                actions=(Button("OK", variant="text", theme=THEME),),
+                theme=THEME,
+                margin_top=12,
+            ),
+            content_description="material-surfaces",
+        ),
+        _card(
+            _eyebrow("Sheets"),
+            BottomSheet(
+                Text(text="BottomSheet", text_color=COLORS.on_surface),
+                modal=False,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            SideSheet(
+                Text(text="SideSheet", text_color=COLORS.on_surface),
+                modal=False,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            content_description="material-sheets",
+        ),
+        _card(
+            _eyebrow("Lists, menus and divider"),
+            MaterialList(
+                ListItem(
+                    "Inbox",
+                    supporting_text="MaterialList + ListItem",
+                    leading="✉",
+                    trailing="12",
+                    theme=THEME,
+                ),
+                MaterialDivider(inset=16, theme=THEME),
+                ListItem("Settings", leading="⚙", theme=THEME),
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            Menu(
+                (
+                    MenuItem("Copy", leading="□"),
+                    MenuItem("Paste", leading="▣", selected=True),
+                ),
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            content_description="material-lists-menus",
+        ),
+        _card(
+            _eyebrow("Progress"),
+            Row(
+                LoadingIndicator(phase=0.28, theme=THEME),
+                CircularProgressIndicator(0.68, theme=THEME, margin_start=20),
+                align_items="center",
+                margin_top=12,
+            ),
+            LinearProgressIndicator(
+                0.62,
+                width=PANEL_WIDTH,
+                height=6,
+                theme=THEME,
+                margin_top=14,
+            ),
+            LinearWavyProgressIndicator(
+                0.48,
+                width=PANEL_WIDTH,
+                height=5,
+                theme=THEME,
+                margin_top=14,
+            ),
+            content_description="material-progress",
+        ),
+        _card(
+            _eyebrow("Navigation"),
+            NavigationBar(
+                navigation_items,
+                selected_index=0,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            NavigationRail(
+                navigation_items,
+                selected_index=1,
+                expanded=True,
+                theme=THEME,
+                margin_top=12,
+            ),
+            NavigationDrawer(
+                navigation_items,
+                selected_index=2,
+                header=Text(
+                    text="NavigationDrawer",
+                    text_color=COLORS.on_surface,
+                    margin_bottom=8,
+                ),
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            content_description="material-navigation",
+        ),
+        _card(
+            _eyebrow("Selection controls"),
+            Checkbox(
+                toggled.value,
+                label="Checkbox",
+                on_change=toggled.set,
+                theme=THEME,
+                margin_top=8,
+            ),
+            Switch(
+                toggled.value,
+                label="Switch",
+                supporting_text="Shared controlled value",
+                on_change=toggled.set,
+                theme=THEME,
+            ),
+            RadioButton(
+                toggled.value,
+                label="RadioButton",
+                value=True,
+                on_select=lambda value: toggled.set(bool(value)),
+                theme=THEME,
+            ),
+            Chip(
+                "Filter chip",
+                variant="filter",
+                selected=toggled.value,
+                on_change=toggled.set,
+                theme=THEME,
+            ),
+            SegmentedButton(
+                "Standalone",
+                selected=choice.value == "one",
+                on_click=lambda: choice.set("one"),
+                theme=THEME,
+                margin_top=10,
+            ),
+            SegmentedButtonGroup(
+                (
+                    SegmentedItem("One", "one"),
+                    SegmentedItem("Two", "two"),
+                    SegmentedItem("Three", "three"),
+                ),
+                selected=choice.value,
+                on_select=choice.set,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            content_description="material-selection",
+        ),
+        _card(
+            _eyebrow("Sliders and text input"),
+            Slider(
+                slider_value.value,
+                on_change=slider_value.set,
+                width=PANEL_WIDTH,
+                theme=THEME,
+                margin_top=8,
+            ),
+            RangeSlider(
+                range_value.value,
+                on_change=range_value.set,
+                width=PANEL_WIDTH,
+                theme=THEME,
+                margin_top=8,
+            ),
+            TextField(
+                value=field_value.value,
+                label="TextField",
+                supporting_text="Controlled text",
+                on_text_change=field_value.set,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            SearchBar(
+                query=query.value,
+                expanded=True,
+                on_query_change=query.set,
+                on_search=query.set,
+                results=(ListItem("Search result", theme=THEME),),
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            content_description="material-inputs",
+        ),
+        _card(
+            _eyebrow("Date and time pickers"),
+            DatePicker(
+                year=2026,
+                month=7,
+                selected=selected_date.value,
+                on_select=selected_date.set,
+                theme=THEME,
+                margin_top=10,
+            ),
+            DateRangePicker(
+                year=2026,
+                month=7,
+                start=selected_range.value[0],
+                end=selected_range.value[1],
+                on_change=selected_range.set,
+                theme=THEME,
+                margin_top=14,
+            ),
+            TimePicker(
+                hour=selected_time.value[0],
+                minute=selected_time.value[1],
+                selection=selected_time_part.value,
+                on_change=selected_time.set,
+                on_selection_change=selected_time_part.set,
+                theme=THEME,
+                margin_top=14,
+            ),
+            content_description="material-pickers",
+        ),
+        _card(
+            _eyebrow("Feedback"),
+            Snackbar(
+                "Everything is native",
+                action_label="Undo",
+                icon="✓",
+                theme=THEME,
+                margin_top=10,
+            ),
+            Tooltip(
+                Button("Tooltip anchor", variant="outlined", theme=THEME),
+                "Tooltip",
+                visible=True,
+                rich=True,
+                supporting_text="Long-press support is also available.",
+                action=Button("Action", variant="text", theme=THEME),
+                theme=THEME,
+                margin_top=14,
+            ),
+            content_description="material-feedback",
+        ),
+        _card(
+            _eyebrow("Tabs and toolbars"),
+            Tab(
+                "Standalone Tab",
+                selected=True,
+                icon="●",
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            Tabs(
+                (TabItem("First"), TabItem("Second"), TabItem("Third")),
+                selected_index=selected_tab.value,
+                on_select=selected_tab.set,
+                secondary=True,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=10,
+            ),
+            Toolbar(
+                IconButton("B", theme=THEME),
+                IconButton("I", theme=THEME),
+                IconButton("U", theme=THEME),
+                floating=False,
+                theme=THEME,
+                width=PANEL_WIDTH,
+                margin_top=12,
+            ),
+            FloatingToolbar(
+                IconButton("←", theme=THEME),
+                IconButton("→", theme=THEME),
+                theme=THEME,
+                margin_top=12,
+            ),
+            content_description="material-tabs-toolbars",
+        ),
+        width="match_parent",
+        content_description="showcase-material",
+    )
+
+
 def App(context: AppContext):
     selected = state(0)
 
@@ -880,7 +1535,33 @@ def App(context: AppContext):
         StylingShowcase(),
         ControlsShowcase(),
     )
-    labels = ("Motion", "Async", "Style", "Controls")
+    labels = ("Motion", "Async", "Style", "Controls", "Lists", "Material")
+    if selected.value == 4:
+        panel = ListsShowcase()
+    elif selected.value == 5:
+        panel = MaterialShowcase()
+    else:
+        panel = panels[selected.value]
+
+    body = (
+        panel
+        if selected.value == 4
+        else Scroll(
+            Column(
+                panel,
+                padding_start=16,
+                padding_end=16,
+                padding_top=20,
+                padding_bottom=28,
+                width="match_parent",
+            ),
+            width="match_parent",
+            height=0,
+            lp_weight=1,
+            background_color=COLORS.surface,
+            content_description=f"showcase-{labels[selected.value].lower()}",
+        )
+    )
 
     return Column(
         Column(
@@ -918,7 +1599,7 @@ def App(context: AppContext):
                 align_items="center",
             ),
             Text(
-                text="Animations · async commits · typed styling",
+                text="Animations · lists · complete Material catalog",
                 font_size=13,
                 text_color="#D7D1F5",
                 margin_top=10,
@@ -940,21 +1621,7 @@ def App(context: AppContext):
             width="match_parent",
             content_description="showcase-tabs",
         ),
-        Scroll(
-            Column(
-                panels[selected.value],
-                padding_start=16,
-                padding_end=16,
-                padding_top=20,
-                padding_bottom=28,
-                width="match_parent",
-            ),
-            width="match_parent",
-            height=0,
-            lp_weight=1,
-            background_color=COLORS.surface,
-            content_description=f"showcase-{labels[selected.value].lower()}",
-        ),
+        body,
         width="match_parent",
         height="match_parent",
         safe_area=True,

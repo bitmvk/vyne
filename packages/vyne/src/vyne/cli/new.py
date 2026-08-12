@@ -8,9 +8,10 @@
 - android/ — a generated Gradle Android project (settings, build scripts,
   manifest, and a copy of the Gradle wrapper from the framework)
 
-The command uses an atomic staging approach: all inputs and destinations
-are checked before any target mutation; on failure the target directory
-is fully rolled back.
+Generation targets an empty directory: every file is staged into a
+temporary sibling and the whole tree is published atomically with
+``os.replace``.  A non-empty target is refused unless ``--force`` replaces
+it entirely.  Existing files are never merged or edited.
 """
 
 from __future__ import annotations
@@ -30,14 +31,7 @@ from vyne.cli.config import (
     validate_module,
     validate_package,
 )
-from vyne.cli.dependencies import (
-    _has_dependency,
-    ensure_vyne_dependency,
-)
-from vyne.cli.generation import (
-    ConflictPolicy,
-    PlanBuilder,
-)
+from vyne.cli.generation import PlanBuilder
 from vyne.cli.project import (
     base_project_root_from_package,
     checkout_root_from_package,
@@ -56,10 +50,10 @@ def create_project(
 ) -> Path:
     """Scaffold a complete Vyne app directory atomically.
 
-    All inputs are validated and all destination conflicts are checked
-    before any file in *target* is modified.  If anything fails during
-    preflight, *target* is untouched.  If staging placement fails, the
-    changes are rolled back.
+    All inputs are validated before anything is staged; every file is
+    written into a temporary sibling and published with a single
+    ``os.replace``, so a failure leaves *target* untouched.  A non-empty
+    *target* is refused unless *force* replaces it entirely.
     """
     target = target.expanduser().resolve()
     if target.exists() and not target.is_dir():
@@ -74,8 +68,6 @@ def create_project(
     app_package = package or _default_package(app_name)
     validate_package(app_package)
     source_file = f"{module}.py"
-
-    same_policy = ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR
 
     builder = PlanBuilder(target)
 
@@ -92,105 +84,51 @@ def create_project(
     )
     # Re-parse generated config to validate before placement (TL-3)
     _validate_generated_config(vyne_toml_content, target)
-    builder.add_file("vyne.toml", vyne_toml_content, policy=same_policy)
-    _plan_pyproject(builder, target, app_name, checkout_root, force)
-    builder.add_file(source_file, _app_py(app_label), policy=same_policy)
-    builder.add_file("__init__.py", "", policy=same_policy)
-    builder.add_file(
-        "tests/__init__.py", "", policy=same_policy,
-    )
-    builder.add_file(
-        "tests/test_app.py", _test_app(module), policy=same_policy,
-    )
-    _plan_android_project(builder, target, app_name, base_project_root, force)
+    builder.add_file("vyne.toml", vyne_toml_content)
+    builder.add_file("pyproject.toml", _pyproject(app_name, _dependency(checkout_root)))
+    builder.add_file(source_file, _app_py(app_label))
+    builder.add_file("__init__.py", "")
+    builder.add_file("tests/__init__.py", "")
+    builder.add_file("tests/test_app.py", _test_app(module))
+    _plan_android_project(builder, app_name, base_project_root)
 
     # Preflight stages everything to a temp sibling; apply atomically
     plan = builder.preflight()
     try:
-        plan.apply()
+        plan.apply(force=force)
     finally:
         plan.cleanup()
 
     return target
 
 
-def _plan_pyproject(
-    builder: PlanBuilder,
-    target: Path,
-    app_name: str,
-    checkout_root: Path | None,
-    force: bool,
-) -> None:
-    """Plan the pyproject.toml file: either rewrite (force/new) or add
-    the Vyne dependency to an existing file."""
-    dependency = _dependency(checkout_root)
-    pyproject_path = target / "pyproject.toml"
-
-    if force or not pyproject_path.is_file():
-        builder.add_file(
-            "pyproject.toml",
-            _pyproject(app_name, dependency),
-            policy=ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR,
-        )
-        return
-
-    # Existing pyproject.toml: inject dependency or leave unchanged
-    content = pyproject_path.read_text(encoding="utf-8")
-    if _has_dependency(content):
-        # Already has Vyne; preserve the existing file byte-for-byte
-        builder.add_file(
-            "pyproject.toml",
-            content,
-            policy=ConflictPolicy.ERROR,
-        )
-        return
-
-    # Add the dependency preserving structure and comments.
-    # This is an intentional modification, so we always replace.
-    transformed = ensure_vyne_dependency(content, dependency)
-    builder.add_file(
-        "pyproject.toml",
-        transformed,
-        policy=ConflictPolicy.REPLACE,
-    )
-
-
 def _plan_android_project(
     builder: PlanBuilder,
-    target: Path,
     app_name: str,
     base_project_root: Path,
-    force: bool,
 ) -> None:
     """Plan all Android project files including the Gradle wrapper copy."""
-    same_policy = ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR
-
     builder.add_file(
         "android/settings.gradle.kts",
         load("settings.gradle.kts").replace(
             "{nameLiteral}", _kotlin_string(app_name)
         ),
-        policy=same_policy,
     )
     builder.add_file(
         "android/build.gradle.kts",
         load("root-build.gradle.kts"),
-        policy=same_policy,
     )
     builder.add_file(
         "android/gradle.properties",
         load("gradle.properties"),
-        policy=same_policy,
     )
     builder.add_file(
         "android/app/build.gradle.kts",
         load("app-build.gradle.kts"),
-        policy=same_policy,
     )
     builder.add_file(
         "android/app/src/main/AndroidManifest.xml",
         load("AndroidManifest.xml"),
-        policy=same_policy,
     )
 
     # The packaged host excludes its shipped default registrant, so the
@@ -201,16 +139,14 @@ def _plan_android_project(
     builder.add_file(
         "android/app/src/main/java/dev/vyne/generated/ExtensionRegistrant.kt",
         registrant_content([]),
-        policy=same_policy,
     )
     # Gradle wrapper files are read from the base project and staged
-    _plan_gradle_wrapper(builder, base_project_root, force)
+    _plan_gradle_wrapper(builder, base_project_root)
 
 
 def _plan_gradle_wrapper(
     builder: PlanBuilder,
     base_project_root: Path,
-    force: bool,
 ) -> None:
     """Stage Gradle wrapper files from the framework's base project.
 
@@ -230,21 +166,7 @@ def _plan_gradle_wrapper(
             raise RuntimeError(
                 f"Missing Gradle wrapper file in base project: {source}"
             )
-        dest_rel = f"android/{relative}"
-        dest = builder.target_root / dest_rel
-        if dest.exists() and not force:
-            if dest.read_bytes() == source.read_bytes():
-                continue
-            raise RuntimeError(
-                f"Refusing to overwrite existing file: {dest}"
-            )
-        is_gradlew = relative == "gradlew"
-        builder.add_file(
-            dest_rel,
-            source.read_bytes(),
-            policy=ConflictPolicy.REPLACE if force else ConflictPolicy.ERROR,
-            executable=is_gradlew,  # gradlew must be executable (CLI-02)
-        )
+        builder.add_file(f"android/{relative}", source.read_bytes())
 
 
 def _gradle_wrapper_root(base_project_root: Path) -> Path:

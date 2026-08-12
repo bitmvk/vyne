@@ -165,9 +165,6 @@ def _build_contracts(kinds: Mapping[str, ExtensionKindInfo]) -> ExtensionContrac
         kind_specs[kind] = KindSpec(
             kind=kind,
             max_children=max_children,
-            props=frozenset(GENERIC_PROPS) | info.props,
-            events=info.events,
-            description="Extension-provided kind",
         )
         event_names.update(info.events)
     return ExtensionContracts(

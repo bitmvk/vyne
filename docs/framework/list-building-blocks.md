@@ -41,12 +41,12 @@ Vyne owns:
 ### `List`
 
 `List` is a small convenience API for vertical and horizontal fixed-extent
-lists. It shares the source adapter, key registry, and the single public
-controller with `VirtualList`, but keeps its dedicated fixed engine: an
-O(1) window calculation plus a compositor that emits spacers for unrendered
-ranges.  The generic engine exists for arbitrary placements and is not used
-for `List`; the benchmark gate confirms the fixed path keeps its
-performance baseline.
+lists. It shares the source adapter, key registry, single public controller,
+and the generic engine with `VirtualList`: `List` renders on the generic
+engine with the public `FixedLinearLayout`, so there is exactly one list
+engine and one window policy. The dedicated fixed engine that predated M4
+was removed; the benchmark gate now compares the `List` surface against its
+previous fixed-engine baseline.
 
 Vyne will not initially provide `SectionList`, `GridList`, `StaggeredList`, or a
 masonry placement algorithm.
@@ -165,8 +165,8 @@ specific use case defines gesture ownership and sizing rules.
 
 ## Existing implementation
 
-The current fixed list contains useful concepts that should be retained or
-redesigned:
+The pre-consolidation fixed list contained useful concepts that were retained
+or redesigned:
 
 - viewport metrics;
 - overscan and projected rendering;
@@ -186,21 +186,19 @@ The following implementation details should not be preserved:
 - an unbounded render-ahead default;
 - the assumption that every rendered cell belongs to one contiguous range.
 
-The reverse-projection cap bug in the current fixed engine must be fixed before
-this redesign. The public fixed list now uses a lazy random-access source
-adapter (no full-data copies), a bounded render-ahead default of 3 viewports,
-and a symmetric forward/reverse projection cap.
+The reverse-projection cap bug in the old fixed engine was fixed before this
+redesign. The public fixed list now uses a lazy random-access source adapter
+(no full-data copies), a bounded render-ahead default of 3 viewports, and a
+symmetric forward/reverse projection cap.
 
 ## Complexity budget
 
 A reusable virtualization foundation is expected to require about 1,900 to
 3,000 lines of production Python, plus native integration and focused tests.
 The fixed-only package was about 1,478 lines before M1 (the M0 baseline).
-With the M1 contract layer it is about 2,180 lines: ``_lists/contracts.py``
-adds 533 and the M1 source/fixed/lists expansions add 162 (the M4 total is
-4,006 — see the Complexity budget note below). The foundation may
-therefore add code, but the complexity is justified only when it belongs to a
-working public primitive.
+The generic contracts initially increased that total; the post-M4 cleanup
+then removed the old fixed engine and planner. Complexity is justified only
+when it belongs to a working public primitive.
 
 No abstraction should be added without:
 
@@ -259,9 +257,9 @@ ordinary primitives (a Scroll hosting a canonical Box with keyed, sized,
 translated cell wrappers), and feeds per-cell `layout_metrics` back into
 the layout.  Imperative `scroll_to_offset`/`index`/`key` run through the
 single public `vyne.ListController`, which owns the private generic engine
-controller alongside the fixed one (M4).
+controller.
 
-- window policy reuses the fixed engine's seams: staged imperative bindings,
+- window policy retains the framework seams established by the old fixed engine: staged imperative bindings,
   native effects, one-in-flight commits, rollback, reset, and
   acknowledgements; no Python runs per native frame beyond coalesced
   `scroll_metrics` and per-cell `layout_metrics` events;
@@ -310,12 +308,10 @@ controller alongside the fixed one (M4).
   custom `VirtualData` source answers through its optional `index_for_key`,
   and an explicit `key_for_item` consults the key registry of
   already-realized keys; any other key raises without a scan;
-- benchmark evidence: the 10-sample harness (`benchmarks/list_baseline_bench.py`)
-  shows the generic path tracks the fixed engine with a modest constant
-  overhead while composing only the realized cells — at a 100k source,
-  generic mount is 8.8 ms vs 6.7 ms fixed and generic window-moving scroll
-  is 9.4 ms/event vs 8.1 ms fixed, with the same bookkeeping (no
-  full-source copies or scans).
+- historical benchmark evidence showed the generic path tracking the old
+  fixed engine with a modest constant overhead while composing only realized
+  cells. The current harness measures the consolidated `List` and
+  `VirtualList` paths with no full-source copies or scans.
 
 ### M3 — native positioning and sticky constraints (implemented)
 
@@ -429,8 +425,8 @@ same values to its native content-size mechanism. Android rejects a semantic
 positioned-content extent above `View.MEASURED_SIZE_MASK` device pixels rather
 than silently truncating it; a future segmented/rebased host tool is required
 for larger Android ranges. This density-dependent adapter limit does not set a
-cross-platform logical maximum. The fixed `List` is unaffected by the semantic
-Box path because its linear-layout spacers already sum to the extent.
+cross-platform logical maximum. `List` uses the same semantic Box path as
+`VirtualList` (its fixed-extent cells are positioned children, not spacers).
 
 Limitations:
 
@@ -455,13 +451,12 @@ The production split is explicit:
   measurement, view reuse, sticky displacement, and interactive scrollbar
   drawing/touch. They never inspect list items, keys, or layouts.
 
-`vyne._lists.host_contract` is the strict pure-Python reference for clamped
-host metrics, sticky main-axis positioning, projected-offset bounds, and
-interactive scrollbar geometry. `tests/fixtures/list_host_contract.json` is
-the canonical cross-language fixture consumed by Python and Android JVM tests;
-a future iOS test target must consume the same file. Native deceleration curves
-do not need to match: `projected_offset` means only the host's best clamped
-estimate of its own final landing position.
+`tests/fixtures/list_host_contract.json` is the canonical cross-language
+fixture consumed by Android JVM tests; the pure-Python reference module
+(`vyne._lists.host_contract`) was removed with the fixed-engine cleanup, and
+a future iOS test target must consume the same file. Native deceleration
+curves do not need to match: `projected_offset` means only the host's best
+clamped estimate of its own final landing position.
 
 `List` and `VirtualList` default `interactive_scrollbar=True`; a plain `Scroll`
 opts in explicitly. When content is scrollable, the host keeps a 7-unit visual
@@ -486,24 +481,24 @@ deferred.
 
 ### Public API
 
-- Two components remain because they serve distinct complexity/performance
-  layers: `List` is fixed-extent convenience on the dedicated O(1) planner;
-  `VirtualList` is the custom-layout foundation.  They share the lazy source
-  adapter, the per-list key registry, and one public controller.
-- One public `ListController` drives both components.  It owns the two
-  private engine controllers (`_fixed`, `_generic`) and dispatches every
-  command to whichever engine is bound.  The private engines stay internal
-  machinery; a controller accidentally bound to two mounted lists raises a
-  clear error on every command.  `List` passes its fixed engine and
-  `VirtualList` passes its generic engine, so accepted binding staging,
-  rejection, unknown reset, unmount, keyed sibling swap, and one-in-flight
-  behavior are unchanged.
+- Two components remain because they serve distinct layers: `List` is
+  fixed-extent convenience, and `VirtualList` is the custom-layout
+  foundation.  They share the lazy source adapter, the per-list key
+  registry, one public controller, and one engine: `List` renders on the
+  generic engine with the public `FixedLinearLayout`.  The dedicated fixed
+  engine was removed in the post-M4 cleanup.
+- One public `ListController` drives both components.  It owns the private
+  generic engine controller and dispatches every command to the mounted
+  list.  The private engine stays internal machinery; a controller
+  accidentally bound to two mounted lists raises a clear error on every
+  command.  Accepted binding staging, rejection, unknown reset, unmount,
+  keyed sibling swap, and one-in-flight behavior are unchanged.
 - The temporary public `VirtualListController` is removed — there is one
-  controller type.  `vyne.experimental.lists` aliases the real `VirtualList`
-  and `ListController` only.
+  controller type.  The `vyne.experimental.lists` alias namespace was
+  removed with the cleanup.
 - Root exports: `List`, `ListController`, `VirtualList`.  The M1 layout/data
   contracts stay under `vyne.lists`.
-- `scroll_to_key` works on both engines with no source scan: default index
+- `scroll_to_key` works on both public components with no source scan: default index
   keys resolve in O(1) (`SequenceDataSource.index_for_key`), realized custom
   keys resolve through the accepted key registry, and `VirtualData` sources
   answer through the optional `index_for_key`.  Unknown, non-canonical, or
@@ -511,21 +506,16 @@ deferred.
 
 ### Planner cleanup (intentional private breaking change)
 
-- `TupleDataSource` and the `plan_window` production wrapper were removed;
-  tests and the benchmark compose `select_window` + `plan_mask`.
-- `WindowConfig` is `(overscan_viewports, max_render_ahead_viewports)`: the
-  velocity-prediction fields, reversal-retention fields, the before/after
-  overscan split, `ViewportMetrics.velocity`, and selection direction state
-  were removed because the public API always set them to zero.  The planner
-  keeps symmetric overscan and the required actual→projected path coverage.
+- The old interval planner (`model.py`, `window.py`, `select_window`, and
+  `plan_mask`) was deleted after `List` moved to `FixedLinearLayout` on the
+  generic engine. The benchmark now measures the live public paths only.
 - Small shared helpers (`_lists/_shared.py`) remove genuine duplication:
   `derive_candidate_key_registry` and `resolve_alignment_offset`/`resolve_key_index`
-  (scroll-target math and key resolution) are used by both engines.  The two
-  private planners remain: the fixed O(1) interval planner is the benchmark
-  specialization, and the generic engine must accept arbitrary placements
-  (`VirtualPlacement` lists) that have no interval form.
-- Both engines carry immutable `actual_viewport`/`planning_viewport`
-  snapshots on promoted bindings and keep a separate physical viewport cache
+  handle key registration and scroll-target math for the remaining generic
+  engine. The post-M4 cleanup removed the fixed planner and routes `List`
+  through `FixedLinearLayout`.
+- The engine carries immutable `actual_viewport`/`planning_viewport`
+  snapshots on promoted bindings and keeps a separate physical viewport cache
   updated only by native scroll observations or an accepted binding change.
   Commands prefer the latest physical observation and fall back to the
   promoted snapshots. An in-flight or rejected programmatic jump therefore
@@ -540,15 +530,11 @@ was run on the M3 tree (pre-M4, `/tmp/m3_bench.json`) and the M4 tree.  The
 fixed cases are flat: mount, same-window no-commit, window-moving scroll,
 fling (unbounded and capped), data update, and reorder all stay within
 noise of the pre-M4 medians (see the final table below).  Planner cases
-changed only where the removed velocity/plan_window cases were replaced by
-their composed equivalents.  The generic cases record their cells and
-source-size flatness.
+included planner cases that were later removed with the fixed engine. The
+generic cases record their cells and source-size flatness.
 
 | case | pre-M4 (M3 tree) med | M4 med | Δmed |
 |---|---|---|---|
-| P1 select_window steady 100k | 0.0169 ms | 0.0161 ms | −4.7% |
-| P5 capped planning (+select) | 0.0197 ms | 0.0178 ms | −9.6% |
-| P6 compose_fixed_window 30-cell | 0.7442 ms | 0.7386 ms | −0.8% |
 | R1 mount List n=1000 | 6.7435 ms | 6.7103 ms | −0.5% |
 | R1 mount List n=100000 | 6.7738 ms | 6.7610 ms | −0.2% |
 | R2 same-window no-commit n=1000 | 0.0949 ms | 0.0928 ms | −2.2% |
@@ -563,7 +549,7 @@ source-size flatness.
 
 (The `--compare` gate compares only cases present in both runs; the removed
 `plan_window`/prediction cases are reported by name change, not regression.
-Sub-microsecond planner cases (P8 construction, baselines below 5 µs) are
+Sub-microsecond source-construction cases (S1, baselines below 5 µs) are
 exempted through the harness's absolute-noise floor `noise_floor_ms=0.005`,
 where timer granularity dominates any percentage threshold.)
 
@@ -579,15 +565,10 @@ separate list-specific recycler.
 
 ## Complexity budget
 
-The final M4 list package is 4,006 production lines:
-contracts 595, fixed 750, generic 1,413, model 269, window 129,
-source 143, `_lists/_shared` 116, `_lists/__init__` 61, public `lists` 530.
-The design budget was 1,900–3,000 lines; the overrun is the honest cost of
-two engines (the fixed O(1) specialization plus the generic placement
-engine) and is accepted because the benchmark gate proves the fixed path
-keeps its baseline.  The native M3 host work adds about 350 lines of Kotlin
-(`VirtualSticky.kt` plus `RoundedViewGroup.kt`/`PropertyApplicators.kt`
-edits).
+The post-M4 cleanup reduced the list package to about 2,725 production lines
+by deleting the fixed engine and routing `List` through the generic placement
+engine with `FixedLinearLayout`. The native M3 host work remains shared by
+both public components.
 
 ## Maintainability decision (M4)
 
@@ -604,16 +585,9 @@ M4 considered three options for the controller layer:
    change; would force `List` onto the generic path and risk the fixed
    performance baseline for no user-visible benefit.
 
-Selected: **option 2.**  One public controller, two private planners.  The
-shared helpers (`_lists/_shared.py`) extract the genuinely identical pieces
-(candidate key registry, alignment math, key resolution) without a large
-inheritance hierarchy; viewport decoding and projection capping differ per
-engine (metrics vs rects). Both engines prefer native physical viewport
-observations and use promoted snapshots as their pre-metrics/accepted
-fallback; candidate destinations never update that observation before
-acknowledgement. The dual planners remain because the fixed engine is the
-benchmark specialization and the generic engine accepts arbitrary
-`VirtualPlacement` output; consolidating them would trade a proven
-performance baseline for code that has no interval form. No compatibility
-promise is made: `VirtualListController` and the planner internals are
-removed, not deprecated.
+M4 first selected option 2. The post-M4 breaking cleanup then selected
+**option 3**: `List` now uses the generic engine with `FixedLinearLayout`.
+One public controller owns one private engine. Candidate destinations still
+never update the native viewport observation before acknowledgement. No
+compatibility promise is made: `VirtualListController`, the fixed engine, and
+planner internals were removed rather than deprecated.

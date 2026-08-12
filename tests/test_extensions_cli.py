@@ -1,8 +1,8 @@
 """Extension discovery, validation, and generation tests (EXT-04).
 
 Covers the extension.toml contract (one field: android_register), convention
-discovery, the journaled generation of the Kotlin registrant, gradle
-property wiring, and doctor diagnostics.
+discovery, atomic generation of the Kotlin registrant, gradle property
+wiring, and doctor diagnostics.
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ class DoctorExtensionTests(unittest.TestCase):
     def test_doctor_reports_extension_health(self):
         from vyne.cli.doctor import _checks
         from vyne.cli.new import create_project
-        from vyne.cli.project import ProjectRepository
+        from vyne.cli.project import load_project
 
         cases = [
             ("healthy", MANIFEST, True),
@@ -207,8 +207,7 @@ class DoctorExtensionTests(unittest.TestCase):
                     root = Path(tmp) / "App"
                     create_project(root, package="com.example.ext", module="app")
                     _write_extension(root, "timer_ring", manifest)
-                    inspection = ProjectRepository().inspect(root)
-                    checks = _checks(inspection, require_device=False)
+                    checks = _checks(load_project(root), require_device=False)
                     ext_check = [c for c in checks if c.name == "extensions"][0]
                     self.assertEqual(ext_check.ok, expect_ok)
                     if expect_ok:

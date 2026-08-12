@@ -36,8 +36,6 @@ uv run python -m unittest discover -s tests
    threading boundary.
 10. [design-rules.md](design-rules.md) — the invariants that protect the
     design.
-11. [../design-patterns-plan.md](../design-patterns-plan.md) — why the
-    code looks the way it does.
 
 ## Where the code lives
 
@@ -81,9 +79,9 @@ uv run python -m unittest discover -s tests
 
 ### Change reconciliation
 
-Edit `vyne/reconcile.py` and prove it with the oracle
-(`tests/support/reconciliation_oracle.py`). The planner must stay pure:
-no IO, no transport, no accepted-state mutation.
+Edit `vyne/reconcile.py` and prove it with the reference applier
+(`tests/support/native_model.py`). The planner must stay pure: no
+IO, no transport, no accepted-state mutation.
 
 ### Add a Material component
 
@@ -123,11 +121,8 @@ validation tests and renderer preflight tests.
 | Kotlin host | `cd android && ./gradlew :host:testDebugUnitTest -Pvyne.extensionKotlinDirs=../../extensions/second_surface/android` (the checked-in registrant references checkout extensions) |
 | bridge / device | `scripts/run_emulator_tests.py` (needs a running emulator) |
 | CLI / generation | Python suite + `scripts/run_generated_project_smoke.py` |
-| docs | `tests/test_acceptance_docs.py` |
 
 ## Related
 
 - [testing.md](../testing/testing.md) — the full test map
 - [design-rules.md](design-rules.md) — invariants and codes
-- [../implementation-resources.md](../implementation-resources.md) —
-  locked decisions, emulator serials, tool paths

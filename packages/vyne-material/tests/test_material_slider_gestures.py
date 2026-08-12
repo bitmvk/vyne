@@ -6,14 +6,16 @@ Tests for:
 - RangeSliderGesture dual-thumb coordination
 - Cancel and pointer replacement
 - Reused Element occurrence independence
+
+Controlled callbacks receive the proposed value directly (no signature
+inspection or zero-argument adaptation).
 """
 
 from __future__ import annotations
 
-import math
 import unittest
+from collections.abc import Callable
 
-from vyne_material._callbacks import CallbackAdapter
 from vyne_material._validation import (
     RangeSliderGesture,
     SliderGesture,
@@ -27,8 +29,8 @@ class SliderGestureLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.spec = SliderSpec(minimum=0, maximum=1, step=0.1, width=240)
 
-    def _make_adapter(self, received: list[float]) -> CallbackAdapter:
-        return CallbackAdapter(lambda v: received.append(v))
+    def _make_callback(self, received: list[float]) -> Callable[[float], None]:
+        return received.append
 
     def test_initial_phase_is_idle(self):
         g = SliderGesture(self.spec, None)
@@ -37,7 +39,7 @@ class SliderGestureLifecycleTests(unittest.TestCase):
 
     def test_down_activates_and_emits(self):
         received: list[float] = []
-        g = SliderGesture(self.spec, self._make_adapter(received))
+        g = SliderGesture(self.spec, self._make_callback(received))
         g.down("single", 142)  # x=142 -> value 0.6
         self.assertEqual(g.phase, "active")
         self.assertEqual(g.active_thumb, "single")
@@ -46,7 +48,7 @@ class SliderGestureLifecycleTests(unittest.TestCase):
 
     def test_move_deduplicates_same_value(self):
         received: list[float] = []
-        g = SliderGesture(self.spec, self._make_adapter(received))
+        g = SliderGesture(self.spec, self._make_callback(received))
         g.down("single", 142)
         self.assertEqual(len(received), 1)
         g.move(142)
@@ -58,7 +60,7 @@ class SliderGestureLifecycleTests(unittest.TestCase):
 
     def test_move_only_when_active(self):
         received: list[float] = []
-        g = SliderGesture(self.spec, self._make_adapter(received))
+        g = SliderGesture(self.spec, self._make_callback(received))
         g.move(164)  # not active -> no emission
         self.assertEqual(len(received), 0)
 
@@ -79,7 +81,7 @@ class SliderGestureLifecycleTests(unittest.TestCase):
     def test_separate_taps_emit_each_time(self):
         """Each down/up cycle emits one callback per tap."""
         received: list[float] = []
-        g = SliderGesture(self.spec, self._make_adapter(received))
+        g = SliderGesture(self.spec, self._make_callback(received))
 
         g.down("single", 142)
         self.assertEqual(len(received), 1)
@@ -94,7 +96,7 @@ class SliderGestureLifecycleTests(unittest.TestCase):
 
     def test_tap_always_emits(self):
         received: list[float] = []
-        g = SliderGesture(self.spec, self._make_adapter(received))
+        g = SliderGesture(self.spec, self._make_callback(received))
         g.tap(142)
         self.assertEqual(len(received), 1)
         g.tap(142)
@@ -102,9 +104,9 @@ class SliderGestureLifecycleTests(unittest.TestCase):
         g.tap(164)
         self.assertEqual(len(received), 3)
 
-    def test_null_adapter_does_not_raise(self):
+    def test_null_callback_does_not_raise(self):
         g = SliderGesture(self.spec, None)
-        # Gesture routing must tolerate a missing adapter without raising.
+        # Gesture routing must tolerate a missing callback without raising.
         g.down("single", 142)
         g.move(164)
         g.up()
@@ -116,12 +118,14 @@ class RangeSliderGestureTests(unittest.TestCase):
     def setUp(self):
         self.spec = SliderSpec(minimum=0, maximum=1, step=0.1, width=240)
 
-    def _make_adapter(self, received: list[tuple[float, float]]) -> CallbackAdapter:
-        return CallbackAdapter(lambda v: received.append(v))
+    def _make_callback(
+        self, received: list[tuple[float, float]]
+    ) -> Callable[[tuple[float, float]], None]:
+        return received.append
 
     def test_down_start_emits_pair(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
         g.down_start(32)  # value_at(32) = 0.1
         self.assertEqual(len(received), 1)
         self.assertAlmostEqual(received[0][0], 0.1)
@@ -129,7 +133,7 @@ class RangeSliderGestureTests(unittest.TestCase):
 
     def test_down_end_emits_pair(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
         # end target at global x = 120 (midpoint) + 88 = 208 -> value 0.9
         g.down_end(208)
         self.assertEqual(len(received), 1)
@@ -138,25 +142,25 @@ class RangeSliderGestureTests(unittest.TestCase):
 
     def test_start_cannot_cross_end(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
         g.down_start(230)  # value_at(230) = 1.0, but capped by end=0.8
         self.assertAlmostEqual(g.start, 0.8)
         self.assertAlmostEqual(received[0][0], 0.8)
 
     def test_end_cannot_cross_start(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
         g.down_end(10)  # value_at(10) = 0.0, but capped by start=0.2
         self.assertAlmostEqual(g.end, 0.2)
         self.assertAlmostEqual(received[0][1], 0.2)
 
     def test_move_end_only_when_active(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
         g.move_end(208)  # not active -> no emission
         self.assertEqual(len(received), 0)
 
-    def test_up_and_cancel_do_not_raise_with_null_adapter(self):
+    def test_up_and_cancel_do_not_raise_with_null_callback(self):
         g = RangeSliderGesture(self.spec, None, 0.2, 0.8)
         g.down_start(32)
         g.up_start()
@@ -166,7 +170,7 @@ class RangeSliderGestureTests(unittest.TestCase):
 
     def test_both_thumbs_independent(self):
         received: list[tuple[float, float]] = []
-        g = RangeSliderGesture(self.spec, self._make_adapter(received), 0.2, 0.8)
+        g = RangeSliderGesture(self.spec, self._make_callback(received), 0.2, 0.8)
 
         g.down_start(32)   # start = 0.1, emit (0.1, 0.8)
         g.down_end(208)    # end = 0.9, emit (0.1, 0.9)
@@ -174,7 +178,7 @@ class RangeSliderGestureTests(unittest.TestCase):
         self.assertAlmostEqual(received[1][0], 0.1)
         self.assertAlmostEqual(received[1][1], 0.9)
 
-    def test_null_adapter_does_not_raise(self):
+    def test_null_callback_does_not_raise(self):
         g = RangeSliderGesture(self.spec, None, 0.2, 0.8)
         g.down_start(32)
         g.move_start(100)

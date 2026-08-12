@@ -9,12 +9,10 @@ rules are shared, not scattered.
 from __future__ import annotations
 
 import math
-from typing import Any, TYPE_CHECKING
+from collections.abc import Callable
+from typing import Any
 
 from vyne_material.theme import ColorScheme
-
-if TYPE_CHECKING:
-    from vyne_material._callbacks import CallbackAdapter
 
 
 def validate_finite(value: Any, name: str) -> float:
@@ -194,21 +192,20 @@ class SliderGesture:
     """
 
     __slots__ = (
-        "_adapter",
+        "_callback",
         "_active_thumb",
         "_last_emitted",
         "_phase",
         "_spec",
-        "_callback",
     )
 
     def __init__(
         self,
         spec: SliderSpec,
-        adapter: "CallbackAdapter | None",
+        callback: Callable[[float], None] | None,
     ) -> None:
         self._spec = spec
-        self._adapter = adapter
+        self._callback = callback
         self._active_thumb: str = ""
         self._last_emitted: float | None = None
         self._phase: str = "idle"  # idle | active
@@ -249,39 +246,39 @@ class SliderGesture:
     def tap(self, x: float) -> None:
         """A discrete tap — always emits once regardless of last value."""
         target = self._spec.value_at(x)
-        if self._adapter is not None:
-            self._adapter.invoke(target)
+        if self._callback is not None:
+            self._callback(target)
 
     def _maybe_emit(self, target: float) -> None:
-        if self._adapter is None:
+        if self._callback is None:
             return
         if self._last_emitted is not None and math.isclose(
             target, self._last_emitted, rel_tol=1e-9, abs_tol=1e-9
         ):
             return
         self._last_emitted = target
-        self._adapter.invoke(target)
+        self._callback(target)
 
 
 class RangeSliderGesture:
     """Dual-thumb gesture state for RangeSlider.
 
     Manages two :class:`SliderGesture` instances (one per thumb) and
-    emits complete ``(start, end)`` tuples through the shared adapter.
+    emits complete ``(start, end)`` tuples through the shared callback.
     """
 
-    __slots__ = ("_adapter", "_spec", "_start_gesture", "_end_gesture",
+    __slots__ = ("_callback", "_spec", "_start_gesture", "_end_gesture",
                  "_start", "_end")
 
     def __init__(
         self,
         spec: SliderSpec,
-        adapter: "CallbackAdapter | None",
+        callback: Callable[[tuple[float, float]], None] | None,
         initial_start: float,
         initial_end: float,
     ) -> None:
         self._spec = spec
-        self._adapter = adapter
+        self._callback = callback
         self._start = initial_start
         self._end = initial_end
         self._start_gesture = SliderGesture(spec, None)
@@ -338,8 +335,8 @@ class RangeSliderGesture:
         self._end_gesture.cancel()
 
     def _emit(self) -> None:
-        if self._adapter is not None:
-            self._adapter.invoke((self._start, self._end))
+        if self._callback is not None:
+            self._callback((self._start, self._end))
 
 
 # ---------------------------------------------------------------------------

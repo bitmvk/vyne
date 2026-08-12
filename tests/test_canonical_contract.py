@@ -13,31 +13,13 @@ import unittest
 
 from vyne.spec.schema_v2 import (
     ALL_PROPS,
-    ANIMATABLE_PROPS,
     PROPS_BY_KIND,
     PRIMITIVE_KINDS,
     GENERIC_PROP_NAMES,
-    CANVAS_OP_SPECS,
-    EVENT_SPECS,
-    validate_path_commands,
-    validate_canvas_draw_ops,
-)
-from vyne.spec.model import PropSpec
-from vyne.values import (
-    FrozenMap,
-    freeze,
-    is_valid_color,
-    is_finite_number,
-    validate_finite,
-    validate_positive,
-    validate_non_negative,
-    is_valid_dash_array,
-    validate_dash_array,
 )
 from vyne.lowering import lower_element
 from vyne.elements import (
-    Element,
-    Box, Layout, Row, Column, Text, TextInput, Image, Scroll, Path, Canvas,
+    Box, Layout, Text, TextInput, Image, Scroll, Path, Canvas,
 )
 
 # ---------------------------------------------------------------------------
@@ -114,9 +96,8 @@ class PerKindPropApplicability(unittest.TestCase):
         for cp in _CANVAS_ONLY_PROPS:
             self.assertIn(cp, props, f"{cp} missing from Canvas")
 
-    def test_layout_has_orientation_required(self):
-        spec = PRIMITIVE_KINDS["Layout"]
-        self.assertIn("orientation", spec.required)
+    def test_layout_has_orientation_prop(self):
+        self.assertIn("orientation", PROPS_BY_KIND["Layout"])
 
 
 # ---------------------------------------------------------------------------

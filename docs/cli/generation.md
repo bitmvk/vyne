@@ -3,46 +3,41 @@
 Sources: `vyne/cli/generation.py`, `vyne/cli/new.py`,
 `vyne/cli/templates/` (template resources).
 
-## The problem
+## The model
 
-Scaffolding writes many files. A crash halfway leaves a broken project.
-The generator solves this with a durable, recoverable transaction
-(GEN-14).
+Scaffolding writes many files, so a crash must never leave a broken
+project.  The generator stages every file into a temporary sibling
+directory on the same filesystem and publishes the whole tree with a
+single `os.replace` — atomic on POSIX, no partial states (GEN-14).
 
-## Transaction phases
+Generation follows an empty-target rule:
 
-```text
-1. SCAN       — build an immutable plan with target snapshots
-2. STAGE      — copy/encode all files into a same-filesystem staging dir
-3. REVALIDATE — check target snapshots have not changed since scan
-4. PUBLISH    — rename staging into place (with backups for existing)
-5. COMMIT     — remove backups (success) or restore from backups (failure)
-6. RECOVER    — detect interrupted published/backed-up states next run
-                and complete or restore deterministically
+- the target must not exist, or be an empty directory
+- a non-empty target is refused unless `--force` replaces it entirely
+- existing files are never merged, preserved, or edited in place
+
+There are no journals, backups, or per-file merge policies: an empty
+target cannot conflict, and a forced replacement cannot partially fail.
+
+## PlanBuilder
+
+```python
+builder = PlanBuilder(target)
+builder.add_file("app.py", "...")
+builder.add_file("android/gradlew", gradlew_bytes)
+plan = builder.preflight()   # stages into a temp sibling; target untouched
+plan.apply(force=force)      # os.replace(staging, target)
+plan.cleanup()               # removes staging debris
 ```
 
-Every input and destination is checked before any target mutation. No
-fallible mutation occurs after publication.
-
-## ManagedFile
-
-Each generated path is a `ManagedFile`:
-
-- `relative` — path relative to the project root
-- `content` (bytes) or `source_dir` (directory copy)
-- `policy` — how to handle an existing file that differs:
-  - `ERROR` — raise
-  - `SKIP` — leave the existing file untouched
-  - `REPLACE` — overwrite via staging + backup
-
-Security invariants:
+Security invariants (checked at `add_file` time):
 
 - no `..` segments
 - no absolute paths
-- no symlink intermediates that resolve outside the target
 
-Symlink escapes through managed parents are checked during plan
-validation.
+Symlink-escape attacks are moot: the target must be empty, so nothing
+pre-existing inside it can be traversed, and a symlink target is
+refused outright.
 
 ## Templates
 
@@ -67,15 +62,14 @@ project's extensions), so it is excluded from the packaged base.
 `vyne build` regenerates `ExtensionRegistrant.kt` from the discovered
 `extensions/*/extension.toml` files:
 
-- journaled (transactional)
+- single-file atomic write (temp sibling + `os.replace`)
 - byte-identical skip when nothing changed
 
-## Failure injection
+## Coverage
 
-The generator is covered by failure-injection tests
-(`test_generation_fault_matrix.py`, `test_generation_transaction.py`,
-`test_generated_python_project.py`) that verify recovery from
-interrupted phases.
+The generator is covered by `test_generation_transaction.py` and the
+CLI acceptance tests (`test_acceptance_cli.py`,
+`test_generated_python_project.py`).
 
 ## Related
 

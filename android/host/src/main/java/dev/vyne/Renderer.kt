@@ -60,7 +60,7 @@ internal class Renderer(
     private val eventSink: (NativeEvent) -> Unit,
     private val applyResultSink: ((ApplyResult, revision: Long?) -> Unit)? = null,
     private val registry: ElementRegistry = defaultRegistry(context),
-) : PropertyHost {
+) {
     val root: FrameLayout = FrameLayout(context)
 
     private val nativeTree = NativeTree(root)
@@ -70,7 +70,7 @@ internal class Renderer(
     private val parentOf get() = nativeTree.parentOf
     private val childrenOf get() = nativeTree.childrenOf
     private val eventBindings = EventBindings()
-    override val viewStates get() = nativeTree.viewStates
+    val viewStates get() = nativeTree.viewStates
     /**
      * Detached-view reuse for cell windows. Python still decides which window
      * is rendered; this only makes mounting it cheap (and GC-free).
@@ -392,39 +392,6 @@ internal class Renderer(
                 }
                 is RenderOperation.SetProp ->
                     requireKnownProperty(operation.id, operation.name)
-                is RenderOperation.SetPropBatch -> {
-                    require(
-                        operation.ids.size == operation.names.size &&
-                            operation.ids.size == operation.values.size
-                    ) {
-                        "preflight: property batch column lengths differ"
-                    }
-                    for (index in operation.ids.indices) {
-                        requireKnownProperty(
-                            operation.ids[index],
-                            operation.names[index],
-                        )
-                    }
-                }
-                is RenderOperation.SetStringPropBatch -> {
-                    require(operation.ids.size == operation.values.size) {
-                        "preflight: string property batch column lengths differ"
-                    }
-                    for (id in operation.ids) {
-                        requireKnownProperty(id, operation.name)
-                    }
-                }
-                is RenderOperation.SetContiguousStringPropBatch -> {
-                    require(
-                        operation.firstId >= 0 &&
-                            operation.values.size <= Int.MAX_VALUE - operation.firstId
-                    ) {
-                        "preflight: contiguous property ids overflow Int"
-                    }
-                    for (index in operation.values.indices) {
-                        requireKnownProperty(operation.firstId + index, operation.name)
-                    }
-                }
                 is RenderOperation.RemoveProp ->
                     requireKnownProperty(operation.id, operation.name)
                 is RenderOperation.Listen -> {
@@ -695,33 +662,6 @@ internal class Renderer(
                     operation.name,
                     operation.value,
                 )
-            is RenderOperation.SetPropBatch -> {
-                for (index in operation.ids.indices) {
-                    applySetPropOperation(
-                        operation.ids[index],
-                        operation.names[index],
-                        operation.values[index],
-                    )
-                }
-            }
-            is RenderOperation.SetStringPropBatch -> {
-                for (index in operation.ids.indices) {
-                    applySetPropOperation(
-                        operation.ids[index],
-                        operation.name,
-                        operation.values[index],
-                    )
-                }
-            }
-            is RenderOperation.SetContiguousStringPropBatch -> {
-                for (index in operation.values.indices) {
-                    applySetPropOperation(
-                        operation.firstId + index,
-                        operation.name,
-                        operation.values[index],
-                    )
-                }
-            }
             is RenderOperation.RemoveProp ->
                 applyRemovePropOperation(operation.id, operation.name)
             is RenderOperation.Listen ->
@@ -1655,7 +1595,7 @@ internal class Renderer(
     }
 
     /** Raw dimension update used by PropertyApplicators. */
-    override fun updateNodeLayoutRaw(id: Int, update: NodeLayout.() -> Unit) {
+    fun updateNodeLayoutRaw(id: Int, update: NodeLayout.() -> Unit) {
         val state = stateFor(id)
         if (state.layout == null) state.layout = NodeLayout()
         state.layout!!.update()
@@ -1663,14 +1603,14 @@ internal class Renderer(
     }
 
     /** Pixel-value layout update used by margin/lp applicators. */
-    override fun updateNodeLayoutPx(id: Int, update: NodeLayout.() -> Unit) {
+    fun updateNodeLayoutPx(id: Int, update: NodeLayout.() -> Unit) {
         val state = stateFor(id)
         if (state.layout == null) state.layout = NodeLayout()
         state.layout!!.update()
         updateLayoutParams(id)
     }
 
-    override fun updateBasePadding(
+    fun updateBasePadding(
         id: Int,
         view: View,
         update: EdgeInsets.() -> EdgeInsets,
@@ -1679,7 +1619,7 @@ internal class Renderer(
         updatePadding(id, view)
     }
 
-    override fun updateCornerRadii(id: Int, view: View, update: CornerRadii.() -> Unit) {
+    fun updateCornerRadii(id: Int, view: View, update: CornerRadii.() -> Unit) {
         val state = stateFor(id)
         val radii = state.cornerRadii ?: CornerRadii()
         radii.update()
@@ -1700,7 +1640,7 @@ internal class Renderer(
     }
 
     @SuppressLint("NewApi")
-    override fun updateOverflow(id: Int, view: View, overflow: String?) {
+    fun updateOverflow(id: Int, view: View, overflow: String?) {
         val hidden = overflow != "visible"
         val state = stateFor(id)
         state.overflowHidden = hidden
@@ -1727,7 +1667,7 @@ internal class Renderer(
      * AccessibilityNodeInfo. Kotlin only mechanically maps the resolved
      * values — it never derives roles or states from visual properties.
      */
-    override fun updateAccessibility(id: Int, view: View) {
+    fun updateAccessibility(id: Int, view: View) {
         val state = stateFor(id)
         val role = state.accessibilityRole
         if (role == null && !state.accessibilityStateSelected &&
@@ -1852,7 +1792,7 @@ internal class Renderer(
     }
 
     @SuppressLint("NewApi")
-    override fun updateBackground(id: Int, view: View) {
+    fun updateBackground(id: Int, view: View) {
         val state = stateFor(id)
         val color = state.backgroundColor
         val radii = state.cornerRadii
@@ -1957,7 +1897,7 @@ internal class Renderer(
         }
     }
 
-    override fun installSafeArea(id: Int, view: View) {
+    fun installSafeArea(id: Int, view: View) {
         view.setOnApplyWindowInsetsListener { target, insets ->
             stateFor(id).safeAreaInset = safeAreaFrom(insets)
             updatePadding(id, target)
@@ -1976,7 +1916,7 @@ internal class Renderer(
         }
     }
 
-    override fun removeSafeArea(id: Int, view: View) {
+    fun removeSafeArea(id: Int, view: View) {
         view.setOnApplyWindowInsetsListener(null)
         stateFor(id).safeAreaInset = EdgeInsets.ZERO
         updatePadding(id, view)
@@ -2489,7 +2429,7 @@ internal class Renderer(
         )
     }
 
-    override fun updateEditorActionListener(id: Int, view: EditText) {
+    fun updateEditorActionListener(id: Int, view: EditText) {
         val state = stateFor(id)
         if (state.editorActionHandler == null && !state.blurOnSubmit) {
             view.setOnEditorActionListener(null)
@@ -2510,7 +2450,7 @@ internal class Renderer(
         }
     }
 
-    override fun updateTextInputFocus(view: EditText, focused: Boolean) {
+    fun updateTextInputFocus(view: EditText, focused: Boolean) {
         inputController.updateFocus(view, focused)
     }
 
@@ -3186,7 +3126,7 @@ internal class Renderer(
 
     private fun parseGravity(value: Any?): Int = parseGravityStatic(value)
 
-    override fun stateFor(id: Int): ViewState {
+    fun stateFor(id: Int): ViewState {
         return viewStates.getOrPut(id) { ViewState() }
     }
 
@@ -3372,7 +3312,7 @@ internal class Renderer(
         }
     }
 
-    override fun updateLayoutGravity(id: Int, view: View) {
+    fun updateLayoutGravity(id: Int, view: View) {
         if (view is LinearLayout) {
             updateLinearLayoutGravity(view)
             updateChildLayoutParams(id)

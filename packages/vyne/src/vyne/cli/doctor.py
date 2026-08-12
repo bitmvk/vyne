@@ -7,6 +7,9 @@
 - Optionally, an authorized adb device (--device flag)
 
 Each check produces a name/ok/detail triple, displayed as a compact table.
+Expected failures (no project, broken config, broken extensions) surface
+as RuntimeErrors from ``load_project``/``discover_extensions`` and are
+rendered directly as failing checks.
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ import shutil
 import subprocess
 import sys
 
-from vyne.cli.project import Project, ProjectInspection, ProjectRepository
+from vyne.cli.extensions import discover_extensions
+from vyne.cli.project import Project, load_project
 
 
 @dataclass(frozen=True)
@@ -28,29 +32,15 @@ class Check:
 
 
 def run_doctor(project: Project | None = None, *, require_device: bool = False) -> int:
-    if project is not None:
-        inspection = ProjectInspection(project=project, issues=(), extensions=())
-    else:
-        # Never crash on expected failures: the inspection carries them as
-        # stable issues (design-pattern #10).
-        inspection = ProjectRepository().inspect()
-    checks = _checks(inspection, require_device=require_device)
-    if not checks:
-        return 1
-    width = max(len(check.name) for check in checks)
-    for check in checks:
-        status = "ok" if check.ok else "missing"
-        print(f"{check.name.ljust(width)}  {status}  {check.detail}")
-    return 0 if all(check.ok for check in checks) else 1
-
-
-def _checks(inspection: ProjectInspection, *, require_device: bool) -> list[Check]:
-    project = inspection.project
     if project is None:
-        return [
-            Check(name=issue.code, ok=False, detail=issue.detail)
-            for issue in inspection.issues
-        ]
+        try:
+            project = load_project()
+        except RuntimeError as exc:
+            return _render([Check("project", False, str(exc))])
+    return _render(_checks(project, require_device=require_device))
+
+
+def _checks(project: Project, *, require_device: bool) -> list[Check]:
     checks = [
         Check("project", project.root.is_dir(), str(project.root)),
         Check(
@@ -81,25 +71,34 @@ def _checks(inspection: ProjectInspection, *, require_device: bool) -> list[Chec
     if require_device:
         checks.append(_adb_device())
 
-    if inspection.issues:
-        return checks + [
-            Check(name=issue.code, ok=False, detail=issue.detail)
-            for issue in inspection.issues
-        ]
-    extensions = inspection.extensions
-    if extensions:
-        checks.append(
-            Check(
-                name="extensions",
-                ok=True,
-                detail=", ".join(
-                    f"{ext.name}@{ext.kotlin_dir.name}" for ext in extensions
-                ),
-            )
-        )
+    try:
+        extensions = tuple(discover_extensions(project.root))
+    except RuntimeError as exc:
+        checks.append(Check("extensions", False, str(exc)))
     else:
-        checks.append(Check(name="extensions", ok=True, detail="none"))
+        if extensions:
+            checks.append(
+                Check(
+                    name="extensions",
+                    ok=True,
+                    detail=", ".join(
+                        f"{ext.name}@{ext.kotlin_dir.name}" for ext in extensions
+                    ),
+                )
+            )
+        else:
+            checks.append(Check(name="extensions", ok=True, detail="none"))
     return checks
+
+
+def _render(checks: list[Check]) -> int:
+    if not checks:
+        return 1
+    width = max(len(check.name) for check in checks)
+    for check in checks:
+        status = "ok" if check.ok else "missing"
+        print(f"{check.name.ljust(width)}  {status}  {check.detail}")
+    return 0 if all(check.ok for check in checks) else 1
 
 
 def _command(name: str) -> Check:

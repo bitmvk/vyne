@@ -4,13 +4,10 @@ These tests use only public ``vyne.lists`` names: the value contracts, the
 protocols, the built-in :class:`~vyne.lists.FixedLinearLayout`, the
 :func:`~vyne.lists.select_placements` realization filter, and the conformance
 fixtures in ``tests.support.list_conformance`` (grid, staggered, sections).
-The fixed-engine parity test imports the private planner only as the
-reference oracle for identical intervals.
+The built-in fixed layout is tested directly at its public contract.
 """
 
 from __future__ import annotations
-
-import random
 
 import pytest
 
@@ -32,13 +29,6 @@ from tests.support.list_conformance import (
     StaggeredLayout,
     UniformGridLayout,
 )
-
-# Fixed-engine reference oracle for the parity tests (identical intervals).
-from vyne._lists.model import FixedExtentLayout, ViewportMetrics, WindowConfig
-from vyne._lists.window import select_window
-
-_ZERO_CONFIG = WindowConfig(overscan_viewports=0)
-
 
 def _request(
     item_count: int = 100,
@@ -658,7 +648,7 @@ def test_pre_metrics_with_realization_beyond_content() -> None:
     assert _indices(selected) == [0, 1, 2]
 
 
-def test_item_extent_domain_aligns_with_fixed_engine() -> None:
+def test_item_extent_domain() -> None:
     with pytest.raises(ValueError, match="at least 1"):
         FixedLinearLayout(0.5)
     with pytest.raises(ValueError, match="item_extent"):
@@ -727,95 +717,6 @@ def test_validation_matrix() -> None:
         FixedLinearLayout(0)
     with pytest.raises(ValueError, match="axis"):
         FixedLinearLayout(10, "diagonal")
-
-
-# ---------------------------------------------------------------------------
-# Fixed-engine parity
-# ---------------------------------------------------------------------------
-
-
-def _axis_viewport_rect(
-    axis: str,
-    offset: float,
-    viewport_extent: float,
-) -> ViewportRect:
-    if axis == "vertical":
-        return ViewportRect(0, offset, 300, viewport_extent)
-    return ViewportRect(offset, 0, viewport_extent, 300)
-
-
-def _assert_fixed_parity(
-    item_count: int,
-    extent: float,
-    axis: str,
-    offset: float,
-    viewport_extent: float,
-) -> None:
-    """Assert public and engine realize identical indices for one interval.
-
-    The engine clamps an out-of-range scroll offset to the end window before
-    planning (``_selection_for_offset``), so the parity is defined on the
-    clamped offset shared by both paths.
-    """
-    layout = FixedExtentLayout(item_count, extent)
-    bounded_offset = min(
-        offset,
-        max(0.0, layout.total_extent - viewport_extent),
-    )
-    viewport = _axis_viewport_rect(axis, bounded_offset, viewport_extent)
-    request = _request(
-        item_count=item_count,
-        viewport=viewport,
-        realization=viewport,
-    )
-    public = _indices(
-        select_placements(
-            request,
-            FixedLinearLayout(extent, axis).place(request),
-            axis=axis,
-        )
-    )
-    item_range = layout.range_for_interval(
-        bounded_offset,
-        bounded_offset + viewport_extent,
-    )
-    assert public == list(range(item_range.start, item_range.stop))
-    selection = select_window(
-        layout,
-        ViewportMetrics(bounded_offset, viewport_extent),
-        _ZERO_CONFIG,
-    )
-    assert public == [
-        index
-        for item_range in selection.mask.ranges
-        for index in range(item_range.start, item_range.stop)
-    ]
-
-
-def test_fixed_linear_parity_edge_cases() -> None:
-    _assert_fixed_parity(10, 10, "vertical", 0, 100)
-    _assert_fixed_parity(10, 10, "vertical", 0, 1)
-    _assert_fixed_parity(10, 10, "vertical", 50, 100)
-    _assert_fixed_parity(10, 10, "vertical", 99.5, 10)
-    _assert_fixed_parity(10, 10, "horizontal", 40, 40)
-    # Offset beyond the content end clamps to the end window on both sides.
-    _assert_fixed_parity(10, 10, "vertical", 10_000, 50)
-    _assert_fixed_parity(10, 10, "vertical", 10_000, 100)
-    # Offset exactly at the last possible scroll position.
-    _assert_fixed_parity(10, 10, "horizontal", 50, 50)
-    # Empty sources realize nothing on either side.
-    _assert_fixed_parity(0, 10, "vertical", 0, 100)
-
-
-def test_fixed_linear_parity_property_matches_engine() -> None:
-    rng = random.Random(0xC0FFEE)
-    for axis in ("vertical", "horizontal"):
-        for _ in range(150):
-            item_count = rng.choice([0, 1, 2, 3, 7, 10, 50, 100])
-            extent = float(rng.choice([1, 2, 10, 33]))
-            viewport_extent = float(rng.choice([1, 25, 100, 500]))
-            offset = rng.uniform(0.0, item_count * extent * 1.5)
-            _assert_fixed_parity(item_count, extent, axis, offset, viewport_extent)
 
 
 # ---------------------------------------------------------------------------

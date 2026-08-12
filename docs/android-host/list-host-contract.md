@@ -15,9 +15,9 @@ Python owns:
 - sticky edge and section-boundary constraints;
 - whether the interactive scrollbar capability is enabled.
 
-The strict reference functions are private in
-`vyne._lists.host_contract`. Cross-language cases live in
-`tests/fixtures/list_host_contract.json`.
+The cross-language reference cases live in
+`tests/fixtures/list_host_contract.json` (the pure-Python reference module
+`vyne._lists.host_contract` was removed with the fixed-engine cleanup).
 
 ## Host tools
 

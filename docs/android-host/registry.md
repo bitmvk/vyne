@@ -28,7 +28,7 @@ Registration lifecycle:
 
 Python queries `extensionKinds()` at startup and builds its validation
 tables from the frozen registry. One contract, one code path, no drift
-(see [extensions.md](../extensions/extensions.md)).
+(see [extensions.md](../extensions.md)).
 
 ## Core widget mapping
 
@@ -96,5 +96,5 @@ props, events, and container flag — the exact shape Python's
 ## Related
 
 - [renderer.md](renderer.md) — how specs are used at apply time
-- [../extensions/extensions.md](../extensions/extensions.md) — the extension contract
+- [../extensions.md](../extensions.md) — the extension contract
 - [framework/lowering.md](../framework/lowering.md) — Python validation
