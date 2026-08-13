@@ -43,7 +43,7 @@ order in [contributing/getting-started.md](contributing/getting-started.md).
 | file | concern |
 |---|---|
 | [drawing/canvas-path.md](drawing/canvas-path.md) | Canvas display list, Path commands, stable op ids |
-| [drawing/style-decoration.md](drawing/style-decoration.md) | Style and Decoration tiers |
+| [drawing/style-decoration.md](drawing/style-decoration.md) | Direct props and Decoration tier |
 
 ## Material and extensions
 

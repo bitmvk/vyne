@@ -9,11 +9,8 @@ from vyne import (
     Decoration,
     Fill,
     Path,
-    Ripple,
     Scroll,
-    Shadow,
     Stroke,
-    Style,
     Text,
 )
 from vyne.elements import event_name_for_prop, normalize_child
@@ -47,28 +44,6 @@ class ElementTests(unittest.TestCase):
         self.assertEqual(
             [child.props["text"] for child in multiple.children[0].children],
             ["one", "two"],
-        )
-
-    def test_style_is_normalized_to_nested_json_props(self):
-        style = Style(
-            text_color="#111111",
-            decoration=Decoration(
-                shape=None,
-                shadow=Shadow(elevation=4),
-                ripple=Ripple(color="#ffffff"),
-            ),
-        )
-        element = Text(text="styled", style=style)
-
-        self.assertEqual(
-            element.props["style"],
-            {
-                "text_color": "#111111",
-                "decoration": {
-                    "shadow": {"elevation": 4},
-                    "ripple": {"color": "#ffffff"},
-                },
-            },
         )
 
     def test_path_and_canvas_lower_path_strings(self):

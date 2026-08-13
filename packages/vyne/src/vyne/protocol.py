@@ -20,7 +20,6 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from vyne.style import Style
 from vyne.animations import encode_animated_values
 
 JsonObject = dict[str, Any]
@@ -508,8 +507,7 @@ def _validate_animation_lifecycle_payload(payload: JsonObject) -> None:
 def ensure_bridge_value(value: Any, *, prop_name: str) -> None:
     """Fail early if a prop cannot cross the direct Python/Kotlin bridge."""
     try:
-        bridge_value = value.to_props() if isinstance(value, Style) else value
-        _validate_bridge_value(encode_animated_values(bridge_value), seen=set())
+        _validate_bridge_value(encode_animated_values(value), seen=set())
     except (TypeError, ValueError, RecursionError) as exc:
         raise TypeError(f"Prop {prop_name!r} cannot cross the native bridge") from exc
 

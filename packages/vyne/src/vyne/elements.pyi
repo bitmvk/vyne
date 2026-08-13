@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from vyne.animations import AnimatedNode
 from vyne.refs import Ref
-from vyne.style import Decoration, Style
+from vyne.style import Decoration
 from vyne.values import FrozenMap
 
 EventCallback = Callable[..., Any]
@@ -81,7 +81,6 @@ class BaseProps(TypedDict, total=False):
     safe_area: bool | None
     scale_x: AnimatableNumber | None
     scale_y: AnimatableNumber | None
-    style: Style | dict[str, Any] | None
     text_alignment: Literal['center', 'end', 'start'] | None
     text_direction: Literal['inherit', 'ltr', 'rtl'] | None
     translation_x: AnimatableNumber | None

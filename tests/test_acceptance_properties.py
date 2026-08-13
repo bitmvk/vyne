@@ -15,7 +15,7 @@ from typing import Any
 from vyne import (
     Box, Canvas, Column, Image, Layout, Path, Row, Scroll,
     Text, TextInput,
-    Style, Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple,
+    Decoration, Fill, Stroke, CornerRadius, Shadow, Ripple,
     state,
 )
 from vyne.runtime import RenderNode, Runtime
@@ -361,27 +361,23 @@ class PropertyLifecycleTests(unittest.TestCase):
             lower_element(Box(height=False))
 
     # ----------------------------------------------------------------
-    # Style/Decoration lowering (MODEL-02)
+    # Decoration lowering (MODEL-02)
     # ----------------------------------------------------------------
 
-    def test_style_is_lowered_to_canonical_props(self):
-        """Style is properly lowered to canonical flat props in v2."""
-        style = Style(text_color="#333333", font_size=18)
+    def test_direct_visual_props_mount(self):
         transport = MemoryTransport()
         runtime = Runtime(
-            lambda: Text(text="styled", style=style),
+            lambda: Text(text="styled", text_color="#333333", font_size=18),
             transport=transport,
         )
         runtime.mount()
 
-        # v2: style is lowered to canonical props; tree mounts successfully.
         self.assertIsNotNone(runtime._coordinator.accepted_root,
-            "Text(style=...) should mount successfully after Style lowering")
+            "Text with direct visual props should mount successfully")
         self.assertEqual(runtime._coordinator.accepted_root.props.get("text_color"), "#333333")
         self.assertEqual(runtime._coordinator.accepted_root.props.get("font_size"), 18)
-        self.assertNotIn("style", runtime._coordinator.accepted_root.props)
 
-    def test_unsupported_style_props_are_rejected(self):
+    def test_unsupported_visual_props_are_rejected(self):
         """Unsupported layout props fail instead of being silently discarded."""
         transport = MemoryTransport()
         runtime = Runtime(

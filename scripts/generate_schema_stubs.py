@@ -37,7 +37,6 @@ _PUBLIC_CONSTRUCTORS = {
 # from their canonical schema targets at generation time.
 _SHARED_PYTHON_ONLY_PROPS = {
     "key": "ElementKey",
-    "style": "Style | dict[str, Any]",
     "decoration": "Decoration | dict[str, Any]",
     "ref": "Ref",
 }
@@ -233,7 +232,7 @@ def render(schema_hash, shared, container_only, widget_fields, widget_required, 
             "",
             "from vyne.animations import AnimatedNode",
             "from vyne.refs import Ref",
-            "from vyne.style import Decoration, Style",
+            "from vyne.style import Decoration",
             "from vyne.values import FrozenMap",
             "",
             "EventCallback = Callable[..., Any]",

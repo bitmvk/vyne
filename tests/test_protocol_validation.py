@@ -390,10 +390,8 @@ class BridgeValueTests(unittest.TestCase):
                 with self.assertRaisesRegex(TypeError, "native bridge"):
                     ensure_bridge_value(bad, prop_name="width")
 
-    def test_style_and_frozen_values_can_cross_bridge(self):
-        from vyne.style import Style
+    def test_frozen_values_can_cross_bridge(self):
         from vyne.values import FrozenMap
-        ensure_bridge_value(Style(text_color="#123456"), prop_name="style")
         ensure_bridge_value(
             FrozenMap([("a", (1, 2)), ("b", FrozenMap([("c", "x")]))]),
             prop_name="draw",

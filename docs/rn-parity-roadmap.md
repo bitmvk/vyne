@@ -38,7 +38,7 @@ so they are ecosystem in Vyne.
 | Text, TextInput | Text, TextField (M3) |
 | ScrollView | Scroll |
 | Button, Pressable, Switch, ActivityIndicator, dialogs | full M3 catalog: buttons, chips, switches, sliders, pickers, Dialog, BottomSheet, Snackbar, Tooltip, progress, tabs, drawers |
-| StyleSheet | Style, Decoration |
+| StyleSheet | Direct props, Decoration |
 | Animated, Easing | Animated.Value, timing, spring, parallel, sequence, interpolation |
 | FlatList / VirtualizedList core | `List` — windowed rendering, view recycling, keyed reconciliation, native fling projection, scroll-to-index/offset |
 | NativeModules / bridge | extensions + `callback()` + `activity()` escape hatch |

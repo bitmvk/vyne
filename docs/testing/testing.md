@@ -91,7 +91,7 @@ assemble -> APK metadata -> extension build + generated wiring.
 ## Showcase and benchmarks
 
 - `examples/app.py` — Vyne Lab, the interactive showcase (Motion, Async,
-  Style, Controls, Lists, and Material tabs). `test_showcase_app.py` renders
+  Visuals, Controls, Lists, and Material tabs). `test_showcase_app.py` renders
   the galleries and exercises list mutation.
 - `benchmarks/bridge_benchmark_app.py` — bridge performance measurement
   (logcat `VYNE_BENCH` lines from `beginMeasurement`).

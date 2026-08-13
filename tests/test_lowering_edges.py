@@ -1,7 +1,7 @@
-"""Caveat tests for the lowering pipeline (Style/Decoration → flat props).
+"""Caveat tests for the lowering pipeline (Decoration → flat props).
 
 Covers alias conflicts, shorthand rejection, the supported-tier contract
-for Style/Decoration, dash-array normalization, view_box validation, and
+for Decoration, dash-array normalization, view_box validation, and
 child-shape limits — the places where user input must fail fast.
 """
 
@@ -24,7 +24,6 @@ from vyne.style import (
     Ripple,
     Shadow,
     Stroke,
-    Style,
 )
 
 
@@ -59,26 +58,6 @@ class ShorthandTests(unittest.TestCase):
     def test_negative_corner_radius_rejected(self):
         with self.assertRaises(ValueError):
             _lower(Box(corner_radius=-2))
-
-
-class StyleLoweringTests(unittest.TestCase):
-    def test_style_color_alias_maps_to_text_color(self):
-        canonical = _lower(Text(text="x", style=Style(color="#333333")))
-        self.assertEqual(canonical.props["text_color"], "#333333")
-
-    def test_unknown_style_field_rejected_with_path(self):
-        with self.assertRaisesRegex(ValueError, "Unknown Style field 'bogus'"):
-            _lower(Box(style={"bogus": 1}))
-
-    def test_style_merging_add_operator(self):
-        base = Style(text_color="#111111", font_size=14)
-        override = Style(font_size=18)
-        merged = base + override
-        self.assertEqual(merged.text_color, "#111111")
-        self.assertEqual(merged.font_size, 18)
-        # Non-Style operands are not merged (standard NotImplemented protocol).
-        with self.assertRaises(TypeError):
-            Style() + None  # type: ignore[operator]
 
 
 class DecorationLoweringTests(unittest.TestCase):
@@ -118,8 +97,7 @@ class DecorationLoweringTests(unittest.TestCase):
         self.assertEqual(canonical.props["corner_radius_top_left"], 3)
         self.assertEqual(canonical.props["elevation"], 4)
         self.assertEqual(canonical.props["ripple_color"], "#eeeeee")
-        # No opaque style/decoration blobs cross the wire.
-        self.assertNotIn("style", canonical.props)
+        # No opaque decoration blob crosses the wire.
         self.assertNotIn("decoration", canonical.props)
 
     def test_explicit_prop_beats_decoration(self):
@@ -207,7 +185,7 @@ class ResolveNativePropsTests(unittest.TestCase):
         self.assertIn("text", native)
 
     def test_no_compat_props_leak(self):
-        canonical = _lower(Box(style=Style(background_color="#111111")))
+        canonical = _lower(Box(background_color="#111111"))
         native = canonical.props
         for leaked in ("style", "decoration", "color", "gap", "size", "flex"):
             self.assertNotIn(leaked, native)

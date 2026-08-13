@@ -8,8 +8,8 @@ Covers MODEL-01, MODEL-02, MODEL-03 requirements:
 - Canonical lowering and native-prop projection
 - Per-mount refs/handles
 
-ValueSpec validation lives in ``test_value_spec_validation``; style and
-Decoration lowering behavior lives in ``test_style_decoration_behavior``,
+ValueSpec validation lives in ``test_value_spec_validation``; Decoration
+lowering behavior lives in ``test_style_decoration_behavior``,
 ``test_lowering_precedence``, and ``test_lowering_edges``.
 """
 

@@ -125,7 +125,7 @@ class ShowcaseAppTests(unittest.TestCase):
         )
 
     def test_style_and_control_sections_are_interactive(self):
-        _click(self.runtime, "Style", 1)
+        _click(self.runtime, "Visuals", 1)
         initial = _node_with_description(
             self.runtime, "style-composed-card"
         ).props["background_color"]

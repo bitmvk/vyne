@@ -1,27 +1,20 @@
-"""Lowering pipeline: Style/Decoration → canonical flat props.
+"""Lowering pipeline: public elements → canonical flat props.
 
 The lowering pipeline converts user-facing Element trees into fully resolved,
 immutable canonical representations before they reach the runtime diff engine.
 
-Precedence:  kind-defaults  <  Style/Decoration supported tier  <  explicit direct props
+Precedence: kind defaults < Decoration < explicit direct props.
 
 Shorthands (padding= → padding_top/bottom/start/end, corner_radius= → four corners)
 and aliases (alpha → opacity) are resolved into independent canonical slots.
 Conflicting explicit aliases reject at lowering time.
 
-Style/Decoration supported tier (first tier):
-  * text_color, background_color, font_size
-  * width, height (dimensions)
-  * padding → four padding edges
-  * corner_radius → four corners (via Decoration.rectangle)
-  * align_items, justify_content (Layout only)
-  * solid Fill color, Stroke(color, width without dash), CornerRadius radii,
+Decoration supports solid Fill color, Stroke(color, width without dash), CornerRadius radii,
     Shadow.elevation, Ripple.color → flat properties
 
 Unsupported features reject: gradients (linear/radial/sweep), dashed strokes,
-non-rectangle shapes, translation-Z, unbounded ripple, and any Style/Decoration
-field that is not part of the supported tier (unknown fields reject with a
-field path).
+non-rectangle shapes, translation-Z, unbounded ripple, and unknown Decoration
+fields.
 
 No ``style``, ``decoration``, or other opaque dicts cross the wire.
 """
@@ -98,17 +91,14 @@ def lower_element(
             "registered? (extensions declare kinds through their ElementSpec)"
         )
 
-    # 1. One layer per source: defaults < style/decoration < explicit props.
+    # 1. One layer per source: defaults < decoration < explicit props.
     raw_props = dict(element.props)
     explicit_values = {
         name: value
         for name, value in raw_props.items()
-        if name not in ("key", "ref", "style", "decoration")
+        if name not in ("key", "ref", "decoration")
     }
     layers: list[dict[str, Any]] = []
-    style_value = raw_props.get("style")
-    if style_value is not None:
-        layers.append(_lower_style(style_value, kind))
     decoration_value = raw_props.get("decoration")
     if decoration_value is not None:
         layers.append(_lower_decoration(decoration_value, kind))
@@ -495,65 +485,8 @@ def _normalize_dash_arrays(props: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Style lowering
+# Decoration lowering
 # ---------------------------------------------------------------------------
-
-_STYLE_SUPPORTED_MAP: dict[str, str] = {
-    # Style field → canonical prop name
-    "text_color": "text_color",
-    "background_color": "background_color",
-    "color": "text_color",  # alias: color → text_color
-    "font_size": "font_size",
-    "padding": "padding",
-    "width": "width",
-    "height": "height",
-    "align_items": "align_items",
-    "justify_content": "justify_content",
-    "decoration": None,  # handled separately
-}
-
-
-def _lower_style(style_value: Any, kind: str) -> dict[str, Any]:
-    """Lower a Style value into a canonical prop layer (plain dict).
-
-    Supported fields apply between defaults and explicit props; the merge
-    (not this function) decides precedence. Unknown fields reject with a
-    field path (MODEL-02).
-    """
-    style_dict = _styling_to_dict(style_value, name="Style")
-    values: dict[str, Any] = {}
-
-    _ALL_KNOWN_STYLE_KEYS = {
-        "text_color", "color", "background_color", "font_size",
-        "padding", "width", "height", "align_items", "justify_content",
-        "decoration",  # handled separately
-    }
-
-    for style_field, style_val in style_dict.items():
-        if style_val is None:
-            continue
-        canonical_name = _STYLE_SUPPORTED_MAP.get(style_field)
-
-        if canonical_name is None and style_field == "decoration":
-            values.update(_lower_decoration(style_val, kind))
-            continue
-
-        if canonical_name is not None:
-            if style_field == "color":
-                values.setdefault("text_color", style_val)
-            else:
-                values[canonical_name] = style_val
-            continue
-
-        raise ValueError(
-            f"Unknown Style field {style_field!r}. "
-            f"Supported fields: {', '.join(sorted(_ALL_KNOWN_STYLE_KEYS))}"
-        )
-
-    # Style fields include shorthands/aliases (padding, alpha): canonicalize
-    # them exactly like any raw layer.
-    return _normalize_layer(values)
-
 
 def _lower_decoration(deco_value: Any, kind: str) -> dict[str, Any]:
     """Lower a Decoration value into a canonical prop layer (plain dict).

@@ -1,7 +1,7 @@
-"""Tests for Style/Decoration lowering precedence (MODEL-02 / MO-3).
+"""Tests for Decoration lowering precedence (MODEL-02 / MO-3).
 
 Covers:
-- Precedence: defaults < style/decoration < explicit direct props
+- Precedence: defaults < decoration < explicit direct props
 - Alias conflicts (alpha vs opacity)
 - Shorthand conflicts with explicit edge values
 - Decoration fields (fill, stroke, corners, shadow, ripple)
@@ -17,13 +17,11 @@ from vyne.elements import (
     Box, Text,
 )
 from vyne.style import (
-    Style, Decoration, Stroke, CornerRadius, Shadow, Ripple,
+    Decoration, Stroke, CornerRadius, Shadow, Ripple,
 )
 
 
 class PrecedenceBasicTests(unittest.TestCase):
-    """Basic precedence: defaults < style < explicit."""
-
     def test_default_opacity_is_one(self):
         """Default opacity for Box is 1.0."""
         canon = lower_element(Box())
@@ -33,29 +31,6 @@ class PrecedenceBasicTests(unittest.TestCase):
         """Explicit prop overrides the schema default."""
         canon = lower_element(Box(opacity=0.5))
         self.assertEqual(canon.props["opacity"], 0.5)
-
-    def test_style_overrides_default(self):
-        """Style value overrides the schema default."""
-        canon = lower_element(Text(text="x", style=Style(text_color="#FF0000")))
-        self.assertEqual(canon.props["text_color"], "#FF0000")
-
-    def test_explicit_overrides_style(self):
-        """Explicit direct prop overrides a Style value."""
-        canon = lower_element(
-            Text(text="x", text_color="#000000",
-                 style=Style(text_color="#FF0000"))
-        )
-        self.assertEqual(canon.props["text_color"], "#000000")
-
-    def test_style_overrides_default_but_not_explicit(self):
-        """Style applies over defaults but not over explicit."""
-        # Box default for opacity is 1.0
-        # Style sets it to 0.5
-        # Explicit sets it to 0.3
-        canon = lower_element(
-            Box(opacity=0.3, style=Style())  # Style doesn't have opacity...
-        )
-        self.assertEqual(canon.props["opacity"], 0.3)
 
     def test_decoration_overrides_defaults(self):
         """Decoration fill overrides the background_color default."""
@@ -102,15 +77,6 @@ class AliasConflictTests(unittest.TestCase):
         """alpha overrides the default opacity (not explicit)."""
         canon = lower_element(Box(alpha=0.2))
         self.assertEqual(canon.props["opacity"], 0.2)
-
-    def test_conflicting_aliases_from_style_reject(self):
-        """Style opacity is overridden by explicit opacity."""
-        # Style doesn't have an 'alpha' field; use 'color' alias for text_color.
-        # When style sets text_color via 'color' and explicit sets text_color,
-        # explicit wins.
-        canon = lower_element(Text(text="x", text_color="#000000",
-                                   style=Style(color="#FF0000")))
-        self.assertEqual(canon.props["text_color"], "#000000")
 
 
 class ShorthandPrecedenceTests(unittest.TestCase):
@@ -164,15 +130,6 @@ class ShorthandPrecedenceTests(unittest.TestCase):
         self.assertEqual(canon.props["corner_radius_bottom_right"], 8)
         self.assertEqual(canon.props["corner_radius_bottom_left"], 5)
 
-    def test_style_padding_plus_explicit_edge(self):
-        """Style padding expanded, but explicit edge overrides."""
-        canon = lower_element(
-            Box(padding_top=3, style=Style(padding=12))
-        )
-        self.assertEqual(canon.props["padding_top"], 3,
-            "Explicit padding_top must override style padding")
-        self.assertEqual(canon.props["padding_bottom"], 12)
-
     def test_decoration_corners_plus_explicit_corner(self):
         """Decoration corners expanded, but explicit corner overrides."""
         canon = lower_element(
@@ -184,32 +141,7 @@ class ShorthandPrecedenceTests(unittest.TestCase):
         self.assertEqual(canon.props["corner_radius_top_right"], 8)
 
 
-class StyleDecorationCombinedTests(unittest.TestCase):
-    """Style + Decoration combined precedence."""
-
-    def test_style_decoration_and_explicit(self):
-        """defaults < style < decoration < explicit."""
-        # decoration background_color > style background_color
-        # But explicit > both
-        canon = lower_element(
-            Box(
-                background_color="#111111",  # explicit wins
-                style=Style(background_color="#222222"),
-                decoration=Decoration.rectangle(fill="#333333"),
-            )
-        )
-        self.assertEqual(canon.props["background_color"], "#111111")
-
-    def test_style_with_decoration_field(self):
-        """Style that contains a decoration field lowers correctly."""
-        elem = Text(text="x", style=Style(
-            text_color="#111111",
-            decoration=Decoration.rectangle(fill="#222222"),
-        ))
-        canon = lower_element(elem)
-        self.assertEqual(canon.props["text_color"], "#111111")
-        self.assertEqual(canon.props["background_color"], "#222222")
-
+class DecorationExplicitPrecedenceTests(unittest.TestCase):
     def test_explicit_border_overrides_decoration_stroke(self):
         """Explicit border_color/border_width override Decoration stroke."""
         canon = lower_element(

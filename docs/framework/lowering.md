@@ -9,7 +9,7 @@ representations before the diff engine sees them.
 ## Precedence
 
 ```text
-kind defaults < Style/Decoration tier < explicit direct props
+kind defaults < Decoration tier < explicit direct props
 ```
 
 Layers are merged with ordered `dict.update`: later layers win. An explicit
@@ -36,23 +36,6 @@ Resolved before merging:
 
 Conflicting explicit aliases (e.g. `alpha` and `opacity` set to different
 values) reject at lowering time.
-
-## Style tier
-
-Supported Style fields:
-
-- `text_color`, `background_color`, `font_size`
-- `width`, `height`
-- `padding` (four edges)
-- `align_items`, `justify_content`
-- `corner_radius` (via `Decoration.rectangle`)
-- solid `Fill` color, `Stroke` (no dash), `CornerRadius`,
-  `Shadow.elevation`, `Ripple.color`
-
-Unsupported/removed Style fields reject as unknown fields with a field path.
-`gap`, `size`, `flex`, `flex_grow`, `flex_shrink`, `flex_basis`, and
-`align_self` were removed from the `Style` type — they are not part of the
-supported tier.
 
 ## Decoration tier
 

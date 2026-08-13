@@ -34,7 +34,6 @@ from vyne.style import (
     Shadow,
     Shape,
     Stroke,
-    Style,
 )
 from vyne.state import state
 from vyne.events import latest
@@ -73,7 +72,6 @@ __all__ = [
     "Scroll",
     "Shadow",
     "Shape",
-    "Style",
     "Stroke",
     "Text",
     "TextInput",

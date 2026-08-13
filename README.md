@@ -142,8 +142,8 @@ tabs exercise the framework as a real application:
 - **Async** — ordered commits on both sides of `await`, responsive concurrent
   callbacks, out-of-order job completion, and native animation while Python is
   suspended.
-- **Style** — composable `Style` and `Decoration` values, strokes, independent
-  corners, shadows, ripple state, typography, and explicit-prop precedence.
+- **Visuals** — direct visual props and structured `Decoration` values, strokes,
+  independent corners, shadows, ripple state, and typography.
 - **Controls** — controlled text input, checkbox, switch, chips, slider,
   progress, segmented buttons, and Material button variants.
 - **Lists** — 30,000 static horizontal items plus 30,000 dynamic keyed rows
@@ -177,7 +177,6 @@ The Python framework currently exposes:
 - `Ripple`
 - `Shadow`
 - `Shape`
-- `Style`
 - `Stroke`
 - `Animated`
 - `animate`
@@ -435,41 +434,39 @@ manifest declarations, permissions, producer shutdown, and Android lifecycle
 cleanup. These primitives do not add an extension registry or a second
 framework lifecycle.
 
-Styling is passed through typed `Style` objects:
+Visual properties are passed directly to elements:
 
 ```python
-from vyne import Style, Text
+from vyne import Text
 
 Text(
     "Todo List",
-    style=Style(text_color="#172554", font_size=24),
+    text_color="#172554",
+    font_size=24,
 )
 ```
 
-Reusable styles can be composed with `+`:
+Reusable visual conventions can be expressed as components or prop mappings:
 
 ```python
-title = Style(text_color="#172554", font_size=24)
-warning = title + Style(text_color="#dc2626")
+title_props = {"text_color": "#172554", "font_size": 24}
+Text(text="Title", **title_props)
 ```
 
 Decorations provide native drawable-backed visual chrome:
 
 ```python
-from vyne import Decoration, Ripple, Shadow, Stroke, Style, Text
+from vyne import Decoration, Ripple, Shadow, Stroke, Text
 
 Text(
     "Card",
-    style=Style(
-        padding=12,
-        decoration=Decoration.rectangle(
-            fill="#ffffff",
-            stroke=Stroke(color="#e5e7eb", width=1),
-            corners=8,
-            shadow=Shadow(elevation=2),
-            ripple=Ripple(color="#22000000"),
-            clip=True,
-        ),
+    padding=12,
+    decoration=Decoration.rectangle(
+        fill="#ffffff",
+        stroke=Stroke(color="#e5e7eb", width=1),
+        corners=8,
+        shadow=Shadow(elevation=2),
+        ripple=Ripple(color="#22000000"),
     ),
 )
 ```

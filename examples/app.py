@@ -26,7 +26,6 @@ from vyne import (
     Scroll,
     Shadow,
     Stroke,
-    Style,
     Text,
     animate,
     component,
@@ -641,26 +640,21 @@ def StylingShowcase():
     pale = "#FFE0EA" if warm.value else COLORS.primary_container
     ink = "#4B0B26" if warm.value else COLORS.on_primary_container
 
-    base = Style(
-        padding=20,
-        decoration=Decoration.rectangle(
-            fill=pale,
-            stroke=Stroke(color=accent, width=1),
-            corners=CornerRadius.all(24),
-            shadow=Shadow(elevation=3),
-            ripple=Ripple(color="#206750E8"),
-        ),
+    decoration = Decoration.rectangle(
+        fill=pale,
+        stroke=Stroke(color=accent, width=1),
+        corners=CornerRadius.all(24),
+        shadow=Shadow(elevation=3),
+        ripple=Ripple(color="#206750E8"),
     )
-    density = Style(padding=12 if compact.value else 20)
-    composed = base + density
 
     return Column(
         _title(
             "Typed styling, flat native props",
-            "Style and Decoration compose in Python, then lower to ordinary validated renderer properties.",
+            "Direct visual props and Decoration lower to ordinary validated renderer properties.",
         ),
         Column(
-            _eyebrow("Style + Decoration"),
+            _eyebrow("Direct props + Decoration"),
             Text(
                 text="Composable surface",
                 font_size=24,
@@ -693,7 +687,8 @@ def StylingShowcase():
                 ),
                 margin_top=18,
             ),
-            style=composed,
+            padding=12 if compact.value else 20,
+            decoration=decoration,
             width="match_parent",
             margin_bottom=14,
             content_description="style-composed-card",
@@ -735,20 +730,22 @@ def StylingShowcase():
             _eyebrow("Typography and precedence"),
             Text(
                 text="Display / 28",
-                style=Style(text_color=accent, font_size=28),
+                text_color=accent,
+                font_size=28,
                 line_height=34,
                 include_font_padding=False,
             ),
             Text(
-                text="Body copy uses a reusable Style value.",
-                style=Style(text_color=COLORS.on_surface_variant, font_size=15),
+                text="Body copy uses direct visual properties.",
+                text_color=COLORS.on_surface_variant,
+                font_size=15,
                 line_height=22,
                 margin_top=5,
             ),
             Text(
-                text="Explicit props override style fields",
-                style=Style(text_color="#B3261E", font_size=13),
+                text="Each visual property is explicit",
                 text_color=COLORS.primary,
+                font_size=13,
                 margin_top=12,
             ),
         ),
@@ -882,7 +879,7 @@ def ControlsShowcase():
                 [
                     SegmentedItem("Motion", "motion"),
                     SegmentedItem("Async", "async"),
-                    SegmentedItem("Style", "style"),
+                    SegmentedItem("Visuals", "visuals"),
                 ],
                 selected=segment.value,
                 on_select=segment.set,
@@ -1535,7 +1532,7 @@ def App(context: AppContext):
         StylingShowcase(),
         ControlsShowcase(),
     )
-    labels = ("Motion", "Async", "Style", "Controls", "Lists", "Material")
+    labels = ("Motion", "Async", "Visuals", "Controls", "Lists", "Material")
     if selected.value == 4:
         panel = ListsShowcase()
     elif selected.value == 5:

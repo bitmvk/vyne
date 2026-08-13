@@ -31,7 +31,7 @@ Details:
 
 - immutable, deeply frozen props (MODEL-03)
 - flat props: aliases and shorthands resolved
-- Style/Decoration layers merged
+- Decoration layers merged with direct props
 - validated against the schema
 - `native_props` precomputed: props minus refs and event handlers
 

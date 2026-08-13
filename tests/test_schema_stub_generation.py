@@ -29,11 +29,11 @@ INTERNAL_EVENTS = frozenset(n for n, s in EVENT_SPECS.items() if not s.public_ca
 # Constructor-surface props that are not schema props: fixed Python-only props
 # plus the shorthand/alias props resolved at lowering time.
 SHARED_PYTHON_ONLY = frozenset(
-    {"key", "style", "decoration", "ref", "alpha", "padding", "corner_radius",
+    {"key", "decoration", "ref", "alpha", "padding", "corner_radius",
      "accessibility_state_checked", "accessibility_state_selected"}
 )
 PYTHON_ONLY_TYPES = {
-    "key": "ElementKey", "style": "Style | dict[str, Any]",
+    "key": "ElementKey",
     "decoration": "Decoration | dict[str, Any]", "ref": "Ref",
     "alpha": "AnimatableNumber", "padding": "int | float",
     "corner_radius": "int | float", "accessibility_state_checked": "bool",
@@ -267,12 +267,12 @@ from typing import cast
 from vyne.animations import AnimatedNode
 from vyne.elements import Box, Canvas, Column, Path, Row, Text, TextInput
 from vyne.refs import Ref
-from vyne.style import Decoration, Style
+from vyne.style import Decoration
 
 def handler(event: object) -> None: ...
 
 animated = cast(AnimatedNode, None)
-Box(key=("section", 3), ref=Ref(), style=Style(), decoration=Decoration(),
+Box(key=("section", 3), ref=Ref(), decoration=Decoration(),
     padding=8, corner_radius=4, alpha=0.5, accessibility_state_checked=True,
     on_click=None, on_pointer_move=handler, width=animated, elevation=animated)
 Text(text="hi", on_click=handler)

@@ -571,37 +571,31 @@ These are useful public APIs but do not require native renderer kinds.
 A host MAY recognize and optimize a composite, but the optimized result must
 preserve the canonical props, events, accessibility, and identity semantics.
 
-## 9. Style and decoration lowering
+## 9. Visual props and decoration lowering
 
-`Style`, `Decoration`, `Fill`, `Stroke`, and similar Python objects are
-source-level typed helpers. Native hosts should not need to decode Python class
-shapes.
+`Decoration`, `Fill`, `Stroke`, and similar Python objects are source-level
+typed helpers. Native hosts should not need to decode Python class shapes.
 
 Before reconciliation, styling should lower into canonical element props:
 
 ```python
 Text(
     text="Title",
-    style=Style(color="#112233", font_size=24),
-    opacity=0.8,
-)
-```
-
-Conceptually becomes:
-
-```python
-Text(
-    text="Title",
-    color="#112233",
+    text_color="#112233",
     font_size=24,
     opacity=0.8,
 )
 ```
 
+Decoration helpers are lowered alongside these already-direct props.
+
+```python
+Decoration.rectangle(fill="#ffffff", corners=8)
+```
+
 Rules:
 
-- Explicit constructor props override values supplied by `style`.
-- Style composition is resolved in Python before diffing.
+- Explicit constructor props override values supplied by `decoration`.
 - A native host receives only canonical props.
 - Solid fills, borders, and corner radii use the common appearance props.
 - Gradients, rich shadows, and press feedback require separately versioned
@@ -947,7 +941,7 @@ architecture:
 | `Path` | Public convenience or optional optimized primitive; canonical fallback is Canvas. |
 | `Divider` | Public composite lowering to Box. |
 | `View` | Compatibility renderer kind; unnecessary in the minimal future set. |
-| `Style` and decorations | Python-side typed helpers lowered to canonical props. |
+| decorations | Python-side typed helpers lowered to canonical props. |
 | state and keyed diffing | Platform-independent runtime behavior. |
 | direct commits and event batches | Platform-independent logical transactions with typed host adapters. |
 | native-driven animation | Shared model with platform-specific animation engines. |

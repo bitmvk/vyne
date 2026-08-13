@@ -1,28 +1,28 @@
-# Style and Decoration
+# Direct Props and Decoration
 
 Sources: `vyne/style.py`, `vyne/lowering.py`.
 
-## Style
+## Direct visual props
 
-`Style` is a typed value object:
-
-```python
-Style(text_color="#172554", font_size=24)
-```
-
-Styles compose with `+` — the right side wins:
+Visual properties are constructor parameters:
 
 ```python
-title = Style(text_color="#172554", font_size=24)
-warning = title + Style(text_color="#dc2626")
+Text(text="Title", text_color="#172554", font_size=24)
 ```
 
-### Supported Style fields
+This keeps each element's supported properties visible to type checkers. Use a
+component or a prop mapping when a visual convention needs to be reused:
 
-| field | canonical prop |
+```python
+title_props = {"text_color": "#172554", "font_size": 24}
+Text(text="Title", **title_props)
+```
+
+### Common visual props
+
+| parameter | canonical prop |
 |---|---|
 | `text_color` | text_color |
-| `color` (alias) | text_color |
 | `background_color` | background_color |
 | `font_size` | font_size |
 | `padding` | four padding edges |
@@ -30,9 +30,7 @@ warning = title + Style(text_color="#dc2626")
 | `align_items`, `justify_content` | layout (containers) |
 | `decoration` | handled separately (below) |
 
-Removed Style fields (`gap`, `size`, `flex`, `flex_grow`, `flex_shrink`,
-`flex_basis`, `align_self`) are not part of the API; a raw dict carrying
-them rejects with an unknown-field path.
+Only parameters supported by the target element are accepted.
 
 ## Decoration
 
@@ -85,11 +83,11 @@ on the Python types; raw dicts carrying those keys still reject at lowering.
 The lowering merge decides who wins:
 
 ```text
-kind defaults < Style/Decoration tier < explicit direct props
+kind defaults < Decoration tier < explicit direct props
 ```
 
-Explicit props always beat Style; Style beats defaults. The ordered merge
-never lets `1 == True` hide a malformed value.
+Explicit props always beat Decoration-derived props. The ordered merge never
+lets `1 == True` hide a malformed value.
 
 See [lowering.md](../framework/lowering.md).
 

@@ -38,7 +38,6 @@ from vyne.protocol import (
 )
 from vyne.path_data import compile_path_data
 from vyne.animations import encode_animated_values
-from vyne.style import normalize_style
 from vyne.values import FrozenMap
 from vyne.extensions_registry import event_name_for_prop as _merged_event_name
 
@@ -105,7 +104,7 @@ def _widget(kind: str, *children: Any, **props: Any) -> Element:
     normalizes children (flattening lists, converting scalars to Text),
     and returns a frozen Element with recursively immutable props.
     """
-    normalized_props = _normalize_props(props)
+    normalized_props = props
     # Validate bridge compatibility once at element creation, not per render.
     # This fails fast so malformed input never reaches the diff loop.
     for name, value in normalized_props.items():
@@ -113,7 +112,7 @@ def _widget(kind: str, *children: Any, **props: Any) -> Element:
             value is not None
             and event_name_for_prop(name) is None
             and name != "key"
-            and name not in ("style", "decoration", "ref")
+            and name not in ("decoration", "ref")
         ):
             ensure_bridge_value(value, prop_name=name)
             normalized_props[name] = encode_animated_values(value)
@@ -199,14 +198,6 @@ def Canvas(**props: Any) -> Element:
     if draw is not None:
         normalized["draw"] = _compile_canvas_draw(draw)
     return _widget("Canvas", **normalized)
-
-
-def _normalize_props(props: dict[str, Any]) -> dict[str, Any]:
-    if "style" not in props:
-        return props
-    normalized = dict(props)
-    normalized["style"] = normalize_style(normalized["style"])
-    return normalized
 
 
 def normalize_child(child: Any) -> Element:
