@@ -994,7 +994,7 @@ internal object PropertyTable {
                 ctx.renderer.updateOverflow(ctx.id, ctx.view, value?.toString())
             },
             remove = { ctx ->
-                ctx.renderer.updateOverflow(ctx.id, ctx.view, "hidden")
+                ctx.renderer.updateOverflow(ctx.id, ctx.view, "visible")
             },
         ))
 

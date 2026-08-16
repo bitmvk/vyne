@@ -45,6 +45,12 @@ class ElementTests(unittest.TestCase):
             [child.props["text"] for child in multiple.children[0].children],
             ["one", "two"],
         )
+        self.assertEqual(single.props["overflow"], "hidden")
+
+    def test_scroll_allows_explicit_visible_overflow(self):
+        element = Scroll(Text(text="one"), overflow="visible")
+
+        self.assertEqual(element.props["overflow"], "visible")
 
     def test_path_and_canvas_lower_path_strings(self):
         path = Path(d="M0 0 L1 2")

@@ -214,7 +214,7 @@ _generic_props: list[PropSpec] = [
     PropSpec("pointer_capture_axis", _pointer_axis, default="vertical",
              wire_name="pointerCaptureAxis"),
     # Layout overflow — only on container kinds
-    PropSpec("overflow", _overflow, default="hidden",
+    PropSpec("overflow", _overflow, default="visible",
              applies_to=_CONTAINER_KINDS,
              wire_name="overflow"),
     # System window insets — available on every native view. Insets are

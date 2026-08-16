@@ -187,7 +187,7 @@ Safe-area insets are additive. They do not replace explicit padding.
 | `background_color` | color or null | transparent | Solid background. |
 | `opacity` | number | `1` | Opacity of the element and its rendered subtree. |
 | `visible` | boolean | `true` | When false, the element is not drawn and consumes no layout space. |
-| `overflow` | `visible` or `hidden` | `hidden` for containers | Whether descendants may draw outside the element bounds. |
+| `overflow` | `visible` or `hidden` | `visible` for layout containers; `hidden` for scroll viewports | Whether descendants may draw outside the element bounds. |
 | `corner_radius` | number | `0` | Radius for all corners. |
 | `corner_radius_top_start` | number or null | null | Logical top-start override. |
 | `corner_radius_top_end` | number or null | null | Logical top-end override. |

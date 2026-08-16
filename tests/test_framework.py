@@ -838,6 +838,26 @@ class FrameworkTests(unittest.TestCase):
             "visible",
         )
 
+        defaults = Runtime(
+            lambda: Column(Text(text="shadow")),
+            transport=MemoryTransport(),
+        )
+        defaults.mount()
+        self.assertEqual(
+            _props_for_kind(defaults.latest_commit, "Layout")[0]["overflow"],
+            "visible",
+        )
+
+        viewport = Runtime(
+            lambda: Scroll(Text(text="content")),
+            transport=MemoryTransport(),
+        )
+        viewport.mount()
+        self.assertEqual(
+            _props_for_kind(viewport.latest_commit, "Scroll")[0]["overflow"],
+            "hidden",
+        )
+
         invalid = Runtime(
             lambda: Box(overflow="scroll"),
             transport=MemoryTransport(),

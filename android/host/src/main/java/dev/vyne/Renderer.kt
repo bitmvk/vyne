@@ -1641,7 +1641,7 @@ internal class Renderer(
 
     @SuppressLint("NewApi")
     fun updateOverflow(id: Int, view: View, overflow: String?) {
-        val hidden = overflow != "visible"
+        val hidden = overflow == "hidden"
         val state = stateFor(id)
         state.overflowHidden = hidden
         if (view is ViewGroup) {
@@ -3155,7 +3155,7 @@ internal class Renderer(
         var borderWidth: Int = 0,
         var borderColor: Int? = null,
         var rippleColor: Int? = null,
-        var overflowHidden: Boolean = true,
+        var overflowHidden: Boolean = false,
         var controlledFocus: Boolean? = null,
         var blurOnKeyboardHide: Boolean = false,
         var blurOnTapOutside: Boolean = false,

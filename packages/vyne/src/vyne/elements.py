@@ -146,6 +146,7 @@ def Scroll(*children: Any, **props: Any) -> Element:
     normalized = normalize_children(children)
     if len(normalized) > 1:
         normalized = (Column(*normalized),)
+    props.setdefault("overflow", "hidden")
     return _widget("Scroll", *normalized, **props)
 
 
@@ -157,6 +158,7 @@ def _horizontal_scroll(
     normalized = normalize_children(children)
     if len(normalized) > 1:
         normalized = (Row(*normalized),)
+    props.setdefault("overflow", "hidden")
     return _widget("HorizontalScroll", *normalized, **props)
 
 
