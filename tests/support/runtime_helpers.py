@@ -86,19 +86,30 @@ def set_props(commit: dict[str, Any], name: str) -> list[dict[str, Any]]:
 
 def dispatch_native_event(
     runtime: Any,
-    listener: dict[str, Any],
+    listener_or_node: Any,
     *,
     event: str = "click",
     seq: int = 1,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    """Dispatch one native event targeting *listener*."""
+    """Dispatch one native event targeting *listener* or a render node.
+
+    ``listener_or_node`` is either a wire ``listen`` operation dict
+    (``{"id", "handler"}``) or a ``RenderNode`` with a registered listener
+    for *event*.
+    """
+    if isinstance(listener_or_node, dict):
+        target = listener_or_node["id"]
+        handler = listener_or_node["handler"]
+    else:
+        target = listener_or_node.id
+        handler = listener_or_node.listeners[event]
     runtime.dispatch_event({
         "type": "event",
         "seq": seq,
-        "target": listener["id"],
+        "target": target,
         "event": event,
-        "handler": listener["handler"],
+        "handler": handler,
         "payload": payload or {},
     })
 

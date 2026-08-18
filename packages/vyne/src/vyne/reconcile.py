@@ -24,7 +24,6 @@ from typing import Any
 
 from vyne.lowering import CanonicalElement
 from vyne.render_model import (
-    ReconcileOperation,
     ReconcileResult,
     RenderNode,
     RenderSnapshot,
@@ -128,7 +127,7 @@ class _ReconcilePlanner:
         self._old_index = old.node_index
         self._old_revision = old.revision
         self._next_node_id = next_node_id
-        self._ops: list[ReconcileOperation] = []
+        self._ops: list[dict[str, Any]] = []
         # Shallow-copy only the ID table. Individual accepted nodes are
         # immutable and can be structurally shared by unchanged subtrees.
         self._next_snapshot_nodes: dict[int, RenderNode] = dict(old.node_index)
@@ -138,14 +137,7 @@ class _ReconcilePlanner:
         """Execute the full reconciliation pass."""
         if self._old_root is None:
             new_root = self._create_subtree(desired, parent_id=0)
-            self._ops.append(
-                ReconcileOperation(
-                    op="insert_child",
-                    parent=0,
-                    child=new_root.id,
-                    index=0,
-                )
-            )
+            self._ops.append({"op": "insert_child", "parent": 0, "child": new_root.id, "index": 0})
             self._shadow_for(0).insert(new_root.id, 0)
         else:
             new_root = self._diff_node(
@@ -210,23 +202,14 @@ class _ReconcilePlanner:
 
         if not self._same_identity(old_node, desired):
             self._ops.append(
-                ReconcileOperation(
-                    op="remove_child",
-                    parent=parent_id,
-                    child=old_node.id,
-                )
+                {"op": "remove_child", "parent": parent_id, "child": old_node.id}
             )
             self._remove_subtree(old_node)
             self._shadow_for(parent_id).remove(old_node.id)
 
             new_node = self._create_subtree(desired, parent_id=parent_id)
             self._ops.append(
-                ReconcileOperation(
-                    op="insert_child",
-                    parent=parent_id,
-                    child=new_node.id,
-                    index=index,
-                )
+                {"op": "insert_child", "parent": parent_id, "child": new_node.id, "index": index}
             )
             self._shadow_for(parent_id).insert(new_node.id, index)
             return new_node
@@ -267,22 +250,13 @@ class _ReconcilePlanner:
         for name, value in desired.native_props.items():
             if old_node.props.get(name) != value:
                 self._ops.append(
-                    ReconcileOperation(
-                        op="set_prop",
-                        id=old_node.id,
-                        name=name,
-                        value=value,
-                    )
+                    {"op": "set_prop", "id": old_node.id, "name": name, "value": value}
                 )
 
         for name in old_node.props:
             if name not in desired.native_props:
                 self._ops.append(
-                    ReconcileOperation(
-                        op="remove_prop",
-                        id=old_node.id,
-                        name=name,
-                    )
+                    {"op": "remove_prop", "id": old_node.id, "name": name}
                 )
 
     def _diff_children(
@@ -330,12 +304,7 @@ class _ReconcilePlanner:
                     parent_id=parent_id,
                 )
                 self._ops.append(
-                    ReconcileOperation(
-                        op="insert_child",
-                        parent=parent_id,
-                        child=new_child.id,
-                        index=next_index,
-                    )
+                    {"op": "insert_child", "parent": parent_id, "child": new_child.id, "index": next_index}
                 )
                 shadow.insert(new_child.id, next_index)
                 new_children.append(new_child)
@@ -350,12 +319,7 @@ class _ReconcilePlanner:
 
             if current_shadow_index != next_index:
                 self._ops.append(
-                    ReconcileOperation(
-                        op="move_child",
-                        parent=parent_id,
-                        child=old_child.id,
-                        index=next_index,
-                    )
+                    {"op": "move_child", "parent": parent_id, "child": old_child.id, "index": next_index}
                 )
                 shadow.move(old_child.id, current_shadow_index, next_index)
 
@@ -373,11 +337,7 @@ class _ReconcilePlanner:
                 continue
             old_child = old_children[old_index]
             self._ops.append(
-                ReconcileOperation(
-                    op="remove_child",
-                    parent=parent_id,
-                    child=old_child.id,
-                )
+                {"op": "remove_child", "parent": parent_id, "child": old_child.id}
             )
             self._remove_subtree(old_child)
             shadow.remove(old_child.id)
@@ -435,16 +395,10 @@ class _ReconcilePlanner:
             parent_id=parent_id,
             element=element,
         )
-        self._ops.append(
-            ReconcileOperation(op="create", id=node_id, kind=element.kind)
-        )
+        self._ops.append({"op": "create", "id": node_id, "kind": element.kind})
         if element.native_props:
             self._ops.append(
-                ReconcileOperation(
-                    op="set_props",
-                    id=node_id,
-                    props=dict(element.native_props),
-                )
+                {"op": "set_props", "id": node_id, "props": dict(element.native_props)}
             )
 
         # Recursively create children.
@@ -453,12 +407,7 @@ class _ReconcilePlanner:
             child = self._create_subtree(child_element, parent_id=node_id)
             node.children.append(child)
             self._ops.append(
-                ReconcileOperation(
-                    op="insert_child",
-                    parent=node_id,
-                    child=child.id,
-                    index=idx,
-                )
+                {"op": "insert_child", "parent": node_id, "child": child.id, "index": idx}
             )
             shadow.insert(child.id, idx)
 
@@ -481,7 +430,7 @@ class _ReconcilePlanner:
             stack.extend(current.children)
 
         # Emit exactly one remove for the subtree root.
-        self._ops.append(ReconcileOperation(op="remove", id=node.id))
+        self._ops.append({"op": "remove", "id": node.id})
 
         # Clean all subtree node IDs from the next snapshot.
         for nid in all_ids:

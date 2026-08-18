@@ -8,8 +8,9 @@ These types separate the Python-owned description from runtime state:
   imports it here and uses it as the authoritative runtime mirror.
 * ``RenderSnapshot`` — the complete tree state at one revision, used as the
   accepted baseline for the next reconciliation pass.
-* ``ReconcileOperation`` / ``ReconcileResult`` — the output of the pure
-  side-effect-free reconciliation planner (``plan_reconcile``).
+* ``ReconcileResult`` — the output of the pure side-effect-free
+  reconciliation planner (``plan_reconcile``): a list of wire-format
+  operation dicts plus the predicted next snapshot.
 
 CORE-01: The pure planner in ``vyne.reconcile`` produces these operations
 given a previous ``RenderSnapshot`` and a desired ``CanonicalElement``.
@@ -70,69 +71,20 @@ class RenderNode:
     parent_id: int | None = field(default=None, repr=False)
 
 
-# ---- reconciliation operations ----------------------------------------------
-
-
-@dataclass(frozen=True)
-class ReconcileOperation:
-    """A single planned operation produced by the pure reconciliation planner.
-
-    These operations are verified by the ``NativeModel`` reference applier
-    before they are converted to wire-format commits.  Every field that is
-    not applicable for a given op type is ``None``.
-    """
-
-    op: str
-    # create / remove
-    id: int | None = None
-    kind: str | None = None
-    # set_props / set_prop / remove_prop
-    name: str | None = None
-    value: Any = None
-    props: dict[str, Any] | None = None
-    # listen / unlisten
-    event: str | None = None
-    handler: int | None = None
-    # insert_child / move_child / remove_child
-    parent: int | None = None
-    child: int | None = None
-    index: int | None = None
-
-    def to_wire_op(self) -> dict[str, Any]:
-        """Convert to the wire-format dict expected by the transport layer."""
-        wire: dict[str, Any] = {"op": self.op}
-        if self.id is not None:
-            wire["id"] = self.id
-        if self.kind is not None:
-            wire["kind"] = self.kind
-        if self.name is not None:
-            wire["name"] = self.name
-        if self.value is not None:
-            wire["value"] = self.value
-        if self.props is not None:
-            wire["props"] = self.props
-        if self.event is not None:
-            wire["event"] = self.event
-        if self.handler is not None:
-            wire["handler"] = self.handler
-        if self.parent is not None:
-            wire["parent"] = self.parent
-        if self.child is not None:
-            wire["child"] = self.child
-        if self.index is not None:
-            wire["index"] = self.index
-        return wire
+# ---- reconciliation result --------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ReconcileResult:
     """Output of a pure reconciliation pass.
 
-    ``ops`` is the sequenced list of operations to apply to the native tree.
-    ``new_snapshot`` is the predicted state after all operations are applied.
+    ``ops`` is the sequenced list of wire-format operation dicts (the same
+    shape ``recovery.build_snapshot_commit`` emits) to apply to the native
+    tree. ``new_snapshot`` is the predicted state after all operations are
+    applied.
     """
 
-    ops: list[ReconcileOperation]
+    ops: list[dict[str, Any]]
     new_snapshot: "RenderSnapshot"
 
 

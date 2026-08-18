@@ -1953,7 +1953,7 @@ class Runtime:
             for handler_id in candidate_registry.handler_ids - active_handlers:
                 candidate_registry.unregister(handler_id)
 
-            ops = [operation.to_wire_op() for operation in plan.ops]
+            ops = plan.ops
             ops = [
                 op for op in ops
                 if not (

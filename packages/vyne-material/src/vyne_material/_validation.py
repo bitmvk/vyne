@@ -263,11 +263,12 @@ class SliderGesture:
 class RangeSliderGesture:
     """Dual-thumb gesture state for RangeSlider.
 
-    Manages two :class:`SliderGesture` instances (one per thumb) and
-    emits complete ``(start, end)`` tuples through the shared callback.
+    Tracks each thumb's active phase independently (both can be pressed in
+    multi-touch) and emits complete ``(start, end)`` tuples through the
+    shared callback.
     """
 
-    __slots__ = ("_callback", "_spec", "_start_gesture", "_end_gesture",
+    __slots__ = ("_callback", "_spec", "_start_active", "_end_active",
                  "_start", "_end")
 
     def __init__(
@@ -281,8 +282,8 @@ class RangeSliderGesture:
         self._callback = callback
         self._start = initial_start
         self._end = initial_end
-        self._start_gesture = SliderGesture(spec, None)
-        self._end_gesture = SliderGesture(spec, None)
+        self._start_active = False
+        self._end_active = False
 
     @property
     def start(self) -> float:
@@ -293,14 +294,14 @@ class RangeSliderGesture:
         return self._end
 
     def down_start(self, x: float) -> None:
-        self._start_gesture.down("start", x)
+        self._start_active = True
         target = min(self._spec.value_at(x), self._end)
         if not math.isclose(target, self._start, rel_tol=1e-9, abs_tol=1e-9):
             self._start = target
             self._emit()
 
     def move_start(self, x: float) -> None:
-        if self._start_gesture.phase != "active":
+        if not self._start_active:
             return
         target = min(self._spec.value_at(x), self._end)
         if not math.isclose(target, self._start, rel_tol=1e-9, abs_tol=1e-9):
@@ -308,20 +309,20 @@ class RangeSliderGesture:
             self._emit()
 
     def up_start(self) -> None:
-        self._start_gesture.up()
+        self._start_active = False
 
     def cancel_start(self) -> None:
-        self._start_gesture.cancel()
+        self._start_active = False
 
     def down_end(self, x: float) -> None:
-        self._end_gesture.down("end", x)
+        self._end_active = True
         target = max(self._spec.value_at(x), self._start)
         if not math.isclose(target, self._end, rel_tol=1e-9, abs_tol=1e-9):
             self._end = target
             self._emit()
 
     def move_end(self, x: float) -> None:
-        if self._end_gesture.phase != "active":
+        if not self._end_active:
             return
         target = max(self._spec.value_at(x), self._start)
         if not math.isclose(target, self._end, rel_tol=1e-9, abs_tol=1e-9):
@@ -329,10 +330,10 @@ class RangeSliderGesture:
             self._emit()
 
     def up_end(self) -> None:
-        self._end_gesture.up()
+        self._end_active = False
 
     def cancel_end(self) -> None:
-        self._end_gesture.cancel()
+        self._end_active = False
 
     def _emit(self) -> None:
         if self._callback is not None:

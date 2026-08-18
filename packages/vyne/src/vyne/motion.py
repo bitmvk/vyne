@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
+from math import isfinite
 
 
 # ── Stable slot identity ────────────────────────────────────────────
@@ -123,7 +124,7 @@ class Spring:
         ]:
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise ValueError(f"Spring.{name} must be a number")
-            if not __import__("math").isfinite(value) or value <= 0:
+            if not isfinite(value) or value <= 0:
                 raise ValueError(f"Spring.{name} must be positive and finite")
         for name, value in [
             ("rest_value_threshold", self.rest_value_threshold),
@@ -131,7 +132,7 @@ class Spring:
         ]:
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise ValueError(f"Spring.{name} must be a number")
-            if not __import__("math").isfinite(value) or value < 0:
+            if not isfinite(value) or value < 0:
                 raise ValueError(f"Spring.{name} must be non-negative and finite")
 
 
@@ -171,21 +172,21 @@ class SetTarget:
             raise ValueError("SetTarget.animation_id must be a non-negative integer")
         if not isinstance(self.target, (int, float)) or isinstance(self.target, bool):
             raise TypeError("SetTarget.target must be a number")
-        if not __import__("math").isfinite(self.target):
+        if not isfinite(self.target):
             raise ValueError("SetTarget.target must be finite")
         if self.from_value is not None:
             if not isinstance(self.from_value, (int, float)) or isinstance(
                 self.from_value, bool
             ):
                 raise TypeError("SetTarget.from_value must be a number or None")
-            if not __import__("math").isfinite(self.from_value):
+            if not isfinite(self.from_value):
                 raise ValueError("SetTarget.from_value must be finite")
         if not isinstance(self.keyframes, tuple):
             raise TypeError("SetTarget.keyframes must be a tuple")
         for value in self.keyframes:
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise TypeError("SetTarget keyframes must be numbers")
-            if not __import__("math").isfinite(value):
+            if not isfinite(value):
                 raise ValueError("SetTarget keyframes must be finite")
 
     @property
@@ -375,36 +376,6 @@ class CanvasOpIdentity:
             result.append(op)
 
         return result
-
-    @staticmethod
-    def animatable_fields() -> dict[str, list[str]]:
-        """Return the animatable numeric fields for each Canvas operation kind.
-
-        Maps operation kind to a list of dot-separated field paths that can
-        be animated.
-        """
-        return {
-            "rect": [
-                "x", "y", "width", "height",
-                "opacity", "stroke_width", "dash_offset",
-            ],
-            "round_rect": [
-                "x", "y", "width", "height", "radius",
-                "opacity", "stroke_width", "dash_offset",
-            ],
-            "circle": [
-                "cx", "cy", "r",
-                "opacity", "stroke_width", "dash_offset",
-            ],
-            "line": [
-                "x1", "y1", "x2", "y2",
-                "opacity", "stroke_width", "dash_offset",
-            ],
-            "path": [
-                "trim_start", "trim_end",
-                "opacity", "stroke_width", "dash_offset",
-            ],
-        }
 
 
 # ── Serialization helpers ────────────────────────────────────────────

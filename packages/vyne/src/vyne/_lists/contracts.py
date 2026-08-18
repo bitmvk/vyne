@@ -25,14 +25,12 @@ from dataclasses import dataclass
 import math
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from vyne.values import validate_non_negative
+
 
 def _finite_non_negative(value: object, *, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError(f"{name} must be a finite non-negative number")
-    result = float(value)
-    if not math.isfinite(result) or result < 0:
-        raise ValueError(f"{name} must be a finite non-negative number")
-    return result
+    """Validate as a finite non-negative number, normalized to float."""
+    return float(validate_non_negative(value, name=name))
 
 
 @runtime_checkable

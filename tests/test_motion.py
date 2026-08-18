@@ -286,10 +286,21 @@ class CanvasOpIdentityTests(unittest.TestCase):
         )
 
     def test_animatable_fields_coverage(self):
-        fields = CanvasOpIdentity.animatable_fields()
-        for kind in ["rect", "round_rect", "circle", "line", "path"]:
-            self.assertIn(kind, fields)
-            self.assertTrue(len(fields[kind]) > 0)
+        from vyne.spec.schema_v2 import ANIMATABLE_CANVAS_FIELDS
+
+        # Exact set: any field added/removed in the schema's canvas ops must
+        # appear/adjust here (catches omissions and accidental additions).
+        self.assertEqual(
+            ANIMATABLE_CANVAS_FIELDS,
+            frozenset({
+                "x", "y", "width", "height",
+                "radius",
+                "cx", "cy", "r",
+                "x1", "y1", "x2", "y2",
+                "trim_start", "trim_end",
+                "opacity", "stroke_width", "dash_offset",
+            }),
+        )
 
     def test_id_survives_reorder(self):
         """Stable IDs survive neighboring insert/reorder/remove."""

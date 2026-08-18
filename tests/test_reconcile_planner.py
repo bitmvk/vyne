@@ -41,12 +41,8 @@ def _make_canonical(element: Element) -> CanonicalElement:
 
 def _apply_plan(model: NativeModel, plan_ops) -> None:
     """Apply a plan's ops to a NativeModel."""
-    from vyne.render_model import ReconcileOperation
     for op in plan_ops:
-        if isinstance(op, ReconcileOperation):
-            model.apply_ops([op.to_wire_op()])
-        else:
-            model.apply_ops([op])
+        model.apply_ops([op])
 
 
 def _build_fresh_model(element: Element) -> NativeModel:
@@ -139,7 +135,7 @@ def verify_transition(
         f"Structural mismatch {label}.\n"
         f"Applied: {model.tree()}\n"
         f"Expected: {expected_model.tree()}\n"
-        f"Recon ops: {[op.op for op in new_result.ops]}",
+        f"Recon ops: {[op['op'] for op in new_result.ops]}",
     )
 
 
@@ -293,9 +289,9 @@ class MixedLifecycleTests(unittest.TestCase):
             _make_canonical(new),
             next_node_id=next_id,
         )
-        removes = [op for op in result.ops if op.op == "remove"]
-        self.assertEqual([op.id for op in removes], [old_child.id])
-        self.assertTrue(descendant_ids.isdisjoint({op.id for op in removes}))
+        removes = [op for op in result.ops if op["op"] == "remove"]
+        self.assertEqual([op["id"] for op in removes], [old_child.id])
+        self.assertTrue(descendant_ids.isdisjoint({op["id"] for op in removes}))
         verify_transition(self, old, new, "recursive-non-leaf-replacement")
 
     def test_keyed_remove_and_re_add(self):
@@ -483,8 +479,8 @@ class NoMutationFaultTests(unittest.TestCase):
         self.assertEqual(len(result1.ops), len(result2.ops))
         # Same op types.
         self.assertEqual(
-            [op.op for op in result1.ops],
-            [op.op for op in result2.ops],
+            [op["op"] for op in result1.ops],
+            [op["op"] for op in result2.ops],
         )
 
 

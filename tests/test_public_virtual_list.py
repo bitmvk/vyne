@@ -7,7 +7,10 @@ from vyne import Column, List, ListController, Text, state
 from vyne.runtime import Runtime
 from vyne.transport import MemoryTransport
 
-from tests.support.runtime_helpers import SilentTransport
+from tests.support.runtime_helpers import (
+    SilentTransport,
+    dispatch_native_event,
+)
 
 
 def _list(
@@ -69,15 +72,12 @@ def _emit_metrics(runtime: Runtime, *, axis: str, offset: float) -> None:
         for node in runtime._coordinator.accepted_index.values()
         if "scroll_metrics" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": node.id,
-            "event": "scroll_metrics",
-            "handler": node.listeners["scroll_metrics"],
-            "payload": _metrics(axis=axis, offset=offset),
-        }
+    dispatch_native_event(
+        runtime,
+        node,
+        event="scroll_metrics",
+        seq=1,
+        payload=_metrics(axis=axis, offset=offset),
     )
 
 
@@ -94,20 +94,17 @@ def _emit_seek(
         for node in runtime._coordinator.accepted_index.values()
         if "scroll_seek" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": sequence,
-            "target": node.id,
-            "event": "scroll_seek",
-            "handler": node.listeners["scroll_seek"],
-            "payload": {
-                "target_offset_x": offset if axis == "horizontal" else 0.0,
-                "target_offset_y": offset if axis == "vertical" else 0.0,
-                "final": final,
-                "event_time": sequence,
-            },
-        }
+    dispatch_native_event(
+        runtime,
+        node,
+        event="scroll_seek",
+        seq=sequence,
+        payload={
+            "target_offset_x": offset if axis == "horizontal" else 0.0,
+            "target_offset_y": offset if axis == "vertical" else 0.0,
+            "final": final,
+            "event_time": sequence,
+        },
     )
 
 
@@ -124,20 +121,17 @@ def _emit_projected_scroll(
         for node in runtime._coordinator.accepted_index.values()
         if "scroll_metrics" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": node.id,
-            "event": "scroll_metrics",
-            "handler": node.listeners["scroll_metrics"],
-            "payload": _metrics(
-                axis="vertical",
-                offset=offset,
-                projected_offset=projected,
-                velocity=velocity,
-            ),
-        }
+    dispatch_native_event(
+        runtime,
+        node,
+        event="scroll_metrics",
+        seq=1,
+        payload=_metrics(
+            axis="vertical",
+            offset=offset,
+            projected_offset=projected,
+            velocity=velocity,
+        ),
     )
 
 
@@ -289,16 +283,7 @@ def test_two_public_controllers_can_swap_mounted_lists() -> None:
             for node in runtime._coordinator.accepted_index.values()
             if node.props.get("content_description") == description
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": button.id,
-                "event": "click",
-                "handler": button.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, button, event="click", seq=1)
         assert runtime.latest_commit["ops"][-1]["offset_y"] == expected_offset
 
 
@@ -326,16 +311,7 @@ def test_public_controller_jump_replaces_window() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.props.get("content_description") == "jump"
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": button.id,
-            "event": "click",
-            "handler": button.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, button, event="click", seq=1)
 
     assert "public-item-50" in _texts(runtime)
     assert runtime.latest_commit["ops"][-1]["op"] == "scroll_to"
@@ -369,16 +345,7 @@ def test_programmatic_window_rebounds_when_data_shrinks_before_metrics() -> None
         for node in runtime._coordinator.accepted_index.values()
         if node.props.get("content_description") == "pre-metrics-jump"
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": button.id,
-            "event": "click",
-            "handler": button.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, button, event="click", seq=1)
     assert "public-item-50" in _texts(runtime)
 
     controls["data"].set(tuple(range(20)))
@@ -522,16 +489,7 @@ def test_public_controller_scroll_to_offset_uses_effect_lane() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.kind == "Text" and "click" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": item.id,
-            "event": "click",
-            "handler": item.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, item, event="click", seq=1)
 
     assert runtime.latest_commit["ops"][-1]["op"] == "scroll_to"
     assert runtime.latest_commit["ops"][-1]["offset_y"] == 250.0
@@ -1175,16 +1133,7 @@ def test_list_controller_scroll_to_key_default_index_keys() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.props.get("content_description") == "list-key-jump"
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": button.id,
-            "event": "click",
-            "handler": button.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, button, event="click", seq=1)
 
     assert runtime.latest_commit["ops"][-1]["op"] == "scroll_to"
     assert runtime.latest_commit["ops"][-1]["offset_y"] == 50.0
@@ -1226,16 +1175,7 @@ def test_list_controller_scroll_to_key_realized_custom_key() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.kind == "Text" and "click" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": cell.id,
-            "event": "click",
-            "handler": cell.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, cell, event="click", seq=1)
 
     assert runtime.latest_commit["ops"][-1]["offset_y"] == 50.0
     # Resolution came from the accepted registry; the re-render read only
@@ -1268,16 +1208,7 @@ def test_list_controller_scroll_to_key_unknown_raises() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.kind == "Text" and "click" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": cell.id,
-            "event": "click",
-            "handler": cell.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, cell, event="click", seq=1)
     assert "not realized" in runtime._last_error
     assert not error
 
@@ -1331,16 +1262,7 @@ def test_single_controller_reused_across_lists() -> None:
         for node in runtime._coordinator.accepted_index.values()
         if node.kind == "Text" and "click" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": 1,
-            "target": cell.id,
-            "event": "click",
-            "handler": cell.listeners["click"],
-            "payload": {},
-        }
-    )
+    dispatch_native_event(runtime, cell, event="click", seq=1)
     assert runtime.latest_commit["ops"][-1]["op"] == "scroll_to"
     assert runtime.latest_commit["ops"][-1]["offset_y"] == 500.0
 

@@ -81,11 +81,9 @@ def _start_registered_app(
     *,
     transport: Transport | None = None,
     launch_data: LaunchData | None = None,
-    root_name: str = "App",
     session_id: str | None = None,
 ) -> Runtime:
     """Import one module and resolve exactly its attempt-local registration."""
-    del root_name  # registration is the sole startup authority
     if not _start_lock.acquire(blocking=False):
         raise RuntimeError("Another app start attempt is already in progress")
 

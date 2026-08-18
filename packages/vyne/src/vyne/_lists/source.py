@@ -1,23 +1,15 @@
-"""Private random-access data-source contracts for virtualized lists."""
+"""Private random-access data-source adapters for virtualized lists.
+
+The source contract itself (``VirtualData``) lives in the public contracts
+module; this file provides the key registry and the plain-Sequence adapter.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from vyne.values import validate_canonical_key
-
-
-@runtime_checkable
-class VirtualizedDataSource(Protocol):
-    """Random-access item and identity adapter used by the list engine."""
-
-    @property
-    def item_count(self) -> int: ...
-
-    def item_at(self, index: int) -> Any: ...
-
-    def key_at(self, index: int) -> Any: ...
 
 
 class KeyRegistry:

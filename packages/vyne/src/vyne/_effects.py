@@ -8,19 +8,15 @@ APIs and their public names are designed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 
 from vyne.protocol import JsonObject, OP_SCROLL_TO
 from vyne.refs import ViewHandle
+from vyne.values import validate_non_negative
 
 
 def _finite_non_negative(value: object, *, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError(f"{name} must be a finite non-negative number")
-    result = float(value)
-    if not math.isfinite(result) or result < 0:
-        raise ValueError(f"{name} must be a finite non-negative number")
-    return result
+    """Validate as a finite non-negative number, normalized to float."""
+    return float(validate_non_negative(value, name=name))
 
 
 @dataclass(frozen=True)

@@ -509,11 +509,11 @@ deferred.
 - The old interval planner (`model.py`, `window.py`, `select_window`, and
   `plan_mask`) was deleted after `List` moved to `FixedLinearLayout` on the
   generic engine. The benchmark now measures the live public paths only.
-- Small shared helpers (`_lists/_shared.py`) remove genuine duplication:
+- Small shared helpers (`_lists/generic.py`) remove genuine duplication:
   `derive_candidate_key_registry` and `resolve_alignment_offset`/`resolve_key_index`
-  handle key registration and scroll-target math for the remaining generic
-  engine. The post-M4 cleanup removed the fixed planner and routes `List`
-  through `FixedLinearLayout`.
+  handle key registration and scroll-target math for the generic engine. The
+  post-M4 cleanup removed the fixed planner and routes `List` through
+  `FixedLinearLayout`.
 - The engine carries immutable `actual_viewport`/`planning_viewport`
   snapshots on promoted bindings and keeps a separate physical viewport cache
   updated only by native scroll observations or an accepted binding change.

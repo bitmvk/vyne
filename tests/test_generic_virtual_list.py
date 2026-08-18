@@ -37,7 +37,10 @@ from tests.support.list_conformance import (
     UniformGridLayout,
     VariableLinearLayout,
 )
-from tests.support.runtime_helpers import SilentTransport
+from tests.support.runtime_helpers import (
+    SilentTransport,
+    dispatch_native_event,
+)
 
 
 def _cell(item: int, index: int) -> Text:
@@ -131,22 +134,19 @@ def _emit_scroll(
         for node in runtime._coordinator.accepted_index.values()
         if "scroll_metrics" in node.listeners
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": seq,
-            "target": scroll.id,
-            "event": "scroll_metrics",
-            "handler": scroll.listeners["scroll_metrics"],
-            "payload": _scroll_payload(
-                offset,
-                extent=extent,
-                axis=axis,
-                cross_extent=cross_extent,
-                velocity=velocity,
-                projected_offset=projected_offset,
-            ),
-        }
+    dispatch_native_event(
+        runtime,
+        scroll,
+        event="scroll_metrics",
+        seq=seq,
+        payload=_scroll_payload(
+            offset,
+            extent=extent,
+            axis=axis,
+            cross_extent=cross_extent,
+            velocity=velocity,
+            projected_offset=projected_offset,
+        ),
     )
 
 
@@ -166,20 +166,17 @@ def _emit_layout(
         and node.key[0] == "__vyne_virtual_cell__"
         and node.key[1] == key
     )
-    runtime.dispatch_event(
-        {
-            "type": "event",
-            "seq": seq,
-            "target": cell.id,
-            "event": "layout_metrics",
-            "handler": cell.listeners["layout_metrics"],
-            "payload": {
-                "x": 0.0,
-                "y": 0.0,
-                "width": width,
-                "height": height,
-            },
-        }
+    dispatch_native_event(
+        runtime,
+        cell,
+        event="layout_metrics",
+        seq=seq,
+        payload={
+            "x": 0.0,
+            "y": 0.0,
+            "width": width,
+            "height": height,
+        },
     )
 
 
@@ -637,16 +634,7 @@ class VirtualListEngineTests(unittest.TestCase):
             for node in runtime._coordinator.accepted_index.values()
             if node.kind == "Text" and "click" in node.listeners
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": cell.id,
-                "event": "click",
-                "handler": cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, cell, event="click", seq=1)
         keys = _cell_keys(runtime)
         self.assertEqual(min(keys), 10_000)
         content = next(
@@ -698,16 +686,7 @@ class VirtualListEngineTests(unittest.TestCase):
             for node in runtime._coordinator.accepted_index.values()
             if node.kind == "Text" and node.props.get("content_description") == "item-1"
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": cell.id,
-                "event": "click",
-                "handler": cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, cell, event="click", seq=1)
         self.assertEqual(counts, {1: 1})
         rotate_cell = next(
             node
@@ -2015,16 +1994,7 @@ class ListControllerFacadeTests(unittest.TestCase):
         )
         before = source.key_accesses
         self.assertEqual(before, 10)  # mount realized the tiny source
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": cell.id,
-                "event": "click",
-                "handler": cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, cell, event="click", seq=1)
         self.assertIn("not realized", runtime._last_error)
         # The failed lookup itself performed no source reads.
         self.assertEqual(source.key_accesses, before)
@@ -2080,16 +2050,7 @@ class ListControllerFacadeTests(unittest.TestCase):
             for node in runtime._coordinator.accepted_index.values()
             if node.kind == "Text" and "click" in node.listeners
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": cell.id,
-                "event": "click",
-                "handler": cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, cell, event="click", seq=1)
         # center/end/nearest need native viewport metrics or a declared
         # main-axis size; neither is present here.
         self.assertIn("requires viewport metrics", runtime._last_error)
@@ -2244,16 +2205,7 @@ class VirtualListBindingTests(unittest.TestCase):
             for node in runtime._coordinator.accepted_index.values()
             if node.kind == "Text" and "click" in node.listeners
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": cell.id,
-                "event": "click",
-                "handler": cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, cell, event="click", seq=1)
         self.assertIsNone(controller._generic._binding)
         self.assertIsNone(controller._generic._scroll_ref.current)
 
@@ -2307,16 +2259,7 @@ class VirtualListBindingTests(unittest.TestCase):
             if node.kind == "Text"
             and node.props.get("content_description", "").startswith("a-")
         )
-        runtime.dispatch_event(
-            {
-                "type": "event",
-                "seq": 1,
-                "target": a_cell.id,
-                "event": "click",
-                "handler": a_cell.listeners["click"],
-                "payload": {},
-            }
-        )
+        dispatch_native_event(runtime, a_cell, event="click", seq=1)
         self.assertIsNotNone(first._generic._binding)
         self.assertIsNotNone(second._generic._binding)
         self.assertIsNotNone(first._generic._scroll_ref.current)

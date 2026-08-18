@@ -12,8 +12,6 @@ from vyne.spec.schema_v2 import (
     CANVAS_OP_SPECS,
     validate_canvas_draw_ops,
     validate_path_commands,
-    _ALL_PATH_COMMANDS,
-    _PATH_COMMAND_ARITY,
 )
 from vyne.lowering import lower_element
 from vyne.elements import Canvas, Path

@@ -488,17 +488,11 @@ CANVAS_OP_SPECS = _CANVAS_OP_SPECS_BUILT
 # Path command schema
 # ---------------------------------------------------------------------------
 
-# Valid Path command letters and their arity (expected values count).
+# Path command letters and their arity (single registry, parser-owned).
 # Format: {"cmd": "M", "values": [x, y]}
-_PATH_COMMAND_ARITY: dict[str, int] = {
-    "M": 2, "m": 2,     # move to (absolute / relative)
-    "L": 2, "l": 2,     # line to
-    "C": 6, "c": 6,     # cubic bezier curve
-    "Q": 4, "q": 4,     # quadratic bezier curve
-    "Z": 0, "z": 0,     # close path
-}
+from vyne.path_data import PATH_COMMAND_ARITY as _PATH_COMMAND_ARITY
 
-_ALL_PATH_COMMANDS: frozenset[str] = frozenset(_PATH_COMMAND_ARITY.keys())
+_ALL_PATH_COMMANDS: frozenset[str] = frozenset(_PATH_COMMAND_ARITY)
 
 
 def validate_path_commands(commands: Any, *, path: str = "commands") -> None:
@@ -785,6 +779,16 @@ def is_animatable_prop_spec(prop_spec: PropSpec) -> bool:
     become animatable without a separate opt-in flag.
     """
     return prop_spec.animatable or _supports_scalar_animation(prop_spec.value)
+
+
+# Animatable Canvas fields: every numeric scalar field across all op kinds
+# (derived from the same value-domain rule as props — no separate registry).
+ANIMATABLE_CANVAS_FIELDS: frozenset[str] = frozenset(
+    field
+    for spec in _CANVAS_OP_SPECS_BUILT.values()
+    for field, value_spec in spec.field_specs.items()
+    if _supports_scalar_animation(value_spec)
+)
 
 
 # Animatable props

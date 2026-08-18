@@ -18,11 +18,18 @@ import math
 import re
 from typing import Any
 
+PATH_COMMAND_ARITY: dict[str, int] = {
+    "M": 2, "m": 2,     # move to (absolute / relative)
+    "L": 2, "l": 2,     # line to
+    "C": 6, "c": 6,     # cubic bezier curve
+    "Q": 4, "q": 4,     # quadratic bezier curve
+    "Z": 0, "z": 0,     # close path
+}
+_COMMANDS = frozenset(PATH_COMMAND_ARITY)
 _TOKEN = re.compile(
-    r"[MLCQZmlcqz]|[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?"
+    rf"[{''.join(sorted(_COMMANDS))}]|"
+    r"[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?"
 )
-_ARITY = {"M": 2, "L": 2, "C": 6, "Q": 4, "Z": 0}
-_COMMANDS = frozenset(_ARITY) | frozenset(item.lower() for item in _ARITY)
 
 
 def compile_path_data(data: str) -> list[dict[str, Any]]:
@@ -53,7 +60,7 @@ def compile_path_data(data: str) -> list[dict[str, Any]]:
 
         assert command is not None
         upper = command.upper()
-        arity = _ARITY[upper]
+        arity = PATH_COMMAND_ARITY[upper]
         if arity == 0:
             commands.append({"cmd": command, "values": []})
             command = None

@@ -695,7 +695,7 @@ def test_validation_matrix() -> None:
         VirtualPlacement(0, -1, 0, 10, 10)
     with pytest.raises(ValueError, match="finite"):
         ViewportRect(0, 0, float("nan"), 10)
-    with pytest.raises(ValueError, match="finite"):
+    with pytest.raises(ValueError, match="non-negative"):
         CellMeasurement(-1, 10)
     with pytest.raises(ValueError, match="outside item range"):
         _request(item_count=10, target_index=10)

@@ -28,7 +28,6 @@ from vyne.motion import (
     Spring,
     Tween,
 )
-from vyne.spec.schema_v2 import ANIMATABLE_PROPS as ANIMATABLE_VIEW_PROPERTIES
 
 if TYPE_CHECKING:
     from vyne.refs import Ref, ViewHandle

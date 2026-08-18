@@ -137,7 +137,6 @@ chaquopy {
 }
 
 dependencies {
-    implementation("androidx.annotation:annotation:1.8.2")
     implementation("androidx.activity:activity:1.8.1")
     testImplementation(kotlin("test"))
     testImplementation("org.json:json:20240303")
