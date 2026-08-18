@@ -112,8 +112,13 @@ doctor` validates each extension. `vyne extension new <name>` scaffolds one.
 
 - Unknown kinds/props/events fail at lowering with a hint that the
   extension's Kotlin must be registered.
-- `Animated(...)` values on extension props are rejected (v1: extension
-  props are not animatable; generic props like `width`/`opacity` are).
+- Every scalar numeric prop is animatable automatically.  Core numeric and
+  dimension props (including previously unflagged props such as
+  `min_width`, `max_width`, `border_width`, and `padding_top`) animate
+  through the same native engine as `width`/`opacity`.
+- Extension props declared with the typed `floatProp` helper are scalar
+  numeric props too, so `animate(ref, progress=1.0)` and `Animated.Value`
+  bindings work without any animation-specific registration.
 - Extension kinds are allowed as children of core containers; a leaf
   extension kind (`container = false`) rejects children on both sides.
 - Notification entry is fully app/extension-owned: build the PendingIntent
@@ -125,8 +130,9 @@ doctor` validates each extension. `vyne extension new <name>` scaffolds one.
 
 ## v1 limits
 
-- No animatable extension props, no per-extension dependencies, no pip
-  distribution, no sandboxing.
+- Colors, booleans, and enum/string props are not yet animatable (the
+  scalar engine covers numeric props only), no per-extension dependencies,
+  no pip distribution, no sandboxing.
 - `pre_launch` is synchronous; a failing event handler logs its traceback
   and preserves the accepted UI (RE-1).
 - Deferred model work: authoritative wire props for rollback (today a

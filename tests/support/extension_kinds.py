@@ -11,8 +11,15 @@ from __future__ import annotations
 from vyne.extensions_registry import sync_from_host
 
 # One synthetic extension kind used across EXT-01/02/03 suites.
+# ``progress`` is declared with the new typed numeric bridge shape:
+# prop name -> [default, minimum, maximum].
 KINDS = {
-    "TimerRing": (["progress", "ring_color"], ["complete"], [False]),
+    "TimerRing": (
+        ["progress", "ring_color"],
+        ["complete"],
+        [False],
+        {"progress": [0.0, 0.0, 1.0]},
+    ),
 }
 
 

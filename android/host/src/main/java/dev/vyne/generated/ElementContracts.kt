@@ -1,10 +1,10 @@
 /** Generated Vyne element property contracts.
- * DO NOT EDIT. Generated from vyne.spec.schema_v2 (hash=5e5fd3dc4f20d503).
+ * DO NOT EDIT. Generated from vyne.spec.schema_v2 (hash=c1bcc459ca06a304).
  */
 package dev.vyne.generated
 
 object ElementContracts {
-    const val SCHEMA_HASH = "5e5fd3dc4f20d503"
+    const val SCHEMA_HASH = "c1bcc459ca06a304"
 
     val KINDS: Set<String> = setOf(
         "Box",
@@ -81,18 +81,132 @@ object ElementContracts {
     )
 
     val ANIMATABLE_PROPS: Set<String> = setOf(
+        "_virtual_content_height",
+        "_virtual_content_width",
+        "_virtual_list_initial_offset",
+        "_virtual_sticky_boundary_end",
+        "_virtual_sticky_boundary_start",
+        "accessibility_range_current",
+        "accessibility_range_max",
+        "accessibility_range_min",
+        "border_width",
+        "corner_radius_bottom_left",
+        "corner_radius_bottom_right",
+        "corner_radius_top_left",
+        "corner_radius_top_right",
         "elevation",
+        "font_size",
         "height",
+        "line_height",
+        "lp_weight",
+        "margin_bottom",
+        "margin_end",
+        "margin_start",
+        "margin_top",
+        "max_height",
+        "max_width",
+        "min_height",
+        "min_width",
         "opacity",
+        "padding_bottom",
+        "padding_end",
+        "padding_start",
+        "padding_top",
         "rotation",
         "rotation_x",
         "rotation_y",
         "scale_x",
         "scale_y",
         "stroke_dash_offset",
+        "stroke_width",
         "translation_x",
         "translation_y",
         "width",
+    )
+
+    val ANIMATABLE_PROP_DEFAULTS: Map<String, Double> = mapOf(
+        "_virtual_content_height" to 0.0,
+        "_virtual_content_width" to 0.0,
+        "_virtual_list_initial_offset" to 0.0,
+        "_virtual_sticky_boundary_end" to 0.0,
+        "_virtual_sticky_boundary_start" to 0.0,
+        "accessibility_range_current" to 0.0,
+        "accessibility_range_max" to 0.0,
+        "accessibility_range_min" to 0.0,
+        "border_width" to 0.0,
+        "corner_radius_bottom_left" to 0.0,
+        "corner_radius_bottom_right" to 0.0,
+        "corner_radius_top_left" to 0.0,
+        "corner_radius_top_right" to 0.0,
+        "elevation" to 0.0,
+        "font_size" to 14.0,
+        "line_height" to 0.0,
+        "lp_weight" to 0.0,
+        "margin_bottom" to 0.0,
+        "margin_end" to 0.0,
+        "margin_start" to 0.0,
+        "margin_top" to 0.0,
+        "max_height" to 0.0,
+        "max_width" to 0.0,
+        "min_height" to 0.0,
+        "min_width" to 0.0,
+        "opacity" to 1.0,
+        "padding_bottom" to 0.0,
+        "padding_end" to 0.0,
+        "padding_start" to 0.0,
+        "padding_top" to 0.0,
+        "rotation" to 0.0,
+        "rotation_x" to 0.0,
+        "rotation_y" to 0.0,
+        "scale_x" to 1.0,
+        "scale_y" to 1.0,
+        "stroke_dash_offset" to 0.0,
+        "stroke_width" to 2.0,
+        "translation_x" to 0.0,
+        "translation_y" to 0.0,
+    )
+
+    val ANIMATABLE_PROP_MIN: Map<String, Double> = mapOf(
+        "_virtual_content_height" to 0.0,
+        "_virtual_content_width" to 0.0,
+        "_virtual_list_initial_offset" to 0.0,
+        "_virtual_sticky_boundary_end" to 0.0,
+        "_virtual_sticky_boundary_start" to 0.0,
+        "accessibility_range_current" to 0.0,
+        "accessibility_range_max" to 0.0,
+        "accessibility_range_min" to 0.0,
+        "border_width" to 0.0,
+        "corner_radius_bottom_left" to 0.0,
+        "corner_radius_bottom_right" to 0.0,
+        "corner_radius_top_left" to 0.0,
+        "corner_radius_top_right" to 0.0,
+        "elevation" to 0.0,
+        "height" to 0.0,
+        "line_height" to 0.0,
+        "lp_weight" to 0.0,
+        "margin_bottom" to 0.0,
+        "margin_end" to 0.0,
+        "margin_start" to 0.0,
+        "margin_top" to 0.0,
+        "max_height" to 0.0,
+        "max_width" to 0.0,
+        "min_height" to 0.0,
+        "min_width" to 0.0,
+        "opacity" to 0.0,
+        "padding_bottom" to 0.0,
+        "padding_end" to 0.0,
+        "padding_start" to 0.0,
+        "padding_top" to 0.0,
+        "width" to 0.0,
+    )
+
+    val ANIMATABLE_PROP_MAX: Map<String, Double> = mapOf(
+        "opacity" to 1.0,
+    )
+
+    val POSITIVE_ANIMATABLE_PROPS: Set<String> = setOf(
+        "font_size",
+        "stroke_width",
     )
 
     val BOX_EVENTS: Set<String> = setOf("accessibility_progress", "click", "layout_metrics", "long_click", "pointer_cancel", "pointer_down", "pointer_move", "pointer_up")

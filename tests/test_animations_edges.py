@@ -235,6 +235,30 @@ class AnimateTargetResolutionTests(unittest.TestCase):
         finally:
             runtime._phase = None
 
+    def test_unflagged_numeric_core_prop_is_animatable(self):
+        runtime, view_id = self._mounted_runtime()
+        runtime._phase = "event"
+        try:
+            with runtime_context(runtime):
+                handle = animate(view_id, "min_width", to=120, duration=180)
+        finally:
+            runtime._phase = None
+        command = runtime._anim_pending[0]
+        self.assertEqual(command.slot.to_key(), f"view:{view_id}:prop:min_width")
+        self.assertEqual(command.targets, (120.0,))
+        self.assertEqual(command.spec.duration_ms, 180)
+        self.assertEqual(handle.status, "queued")
+
+    def test_negative_target_for_non_negative_core_prop_is_rejected(self):
+        runtime, view_id = self._mounted_runtime()
+        runtime._phase = "event"
+        try:
+            with runtime_context(runtime):
+                with self.assertRaisesRegex(ValueError, "non-negative"):
+                    animate(view_id, "min_width", to=-1)
+        finally:
+            runtime._phase = None
+
     def test_rejects_invalid_lifecycle_callbacks_and_spring_parameters(self):
         runtime, view_id = self._mounted_runtime()
         runtime._phase = "event"

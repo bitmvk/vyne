@@ -66,7 +66,7 @@ import asyncio
 import inspect
 import logging
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from threading import Event as ThreadEvent
@@ -2147,6 +2147,74 @@ class Runtime:
         self.queue_animation_command(command)
         return True
 
+    def validate_animation_commands(
+        self,
+        commands: Sequence[SetTarget | DriverSetTarget],
+    ) -> None:
+        """Validate commands before any animation id is allocated or queued.
+
+        ``animate()`` uses this preflight so a multi-property group fails
+        atomically: no child animation is registered unless every command is
+        valid.
+        """
+        for cmd in commands:
+            self._validate_animation_command(cmd)
+
+    def _validate_animation_command(
+        self,
+        cmd: SetTarget | DriverSetTarget,
+    ) -> None:
+        """Kind-aware semantic validation for one scalar animation command."""
+        slot = cmd.slot if isinstance(cmd, SetTarget) else cmd.anchor
+        node_index = self._coordinator.accepted_index or {}
+        node = node_index.get(slot.node_id)
+        if node is None:
+            raise ValueError(
+                f"Cannot animate unknown view id {slot.node_id}"
+            )
+
+        if isinstance(cmd, DriverSetTarget):
+            expected = self.animated_driver_anchor(cmd.driver_id)
+            if expected != cmd.anchor:
+                raise ValueError(
+                    f"Animated.Value driver {cmd.driver_id} binding changed before start"
+                )
+            return
+
+        if slot.slot_id is not None:
+            if node.kind != "Canvas":
+                raise ValueError(
+                    "Canvas presentation slots require a Canvas node"
+                )
+            return
+
+        from vyne.animations import animated_driver_ids
+        from vyne.extensions_registry import is_animatable_prop, resolve_prop_for_kind
+
+        bound_drivers = animated_driver_ids(node.props.get(slot.property))
+        if bound_drivers:
+            raise ValueError(
+                f"Property {slot.property!r} is bound to Animated.Value; "
+                "animate the value instead"
+            )
+
+        prop_spec = resolve_prop_for_kind(node.kind, slot.property)
+        if prop_spec is None or not is_animatable_prop(node.kind, slot.property):
+            raise ValueError(
+                f"Property {slot.property!r} is not animatable "
+                f"for {node.kind}"
+            )
+        for index, target_value in enumerate(cmd.targets):
+            prop_spec.value.validate(
+                target_value,
+                path=f"animation.{slot.property}.targets[{index}]",
+            )
+        if cmd.from_value is not None:
+            prop_spec.value.validate(
+                cmd.from_value,
+                path=f"animation.{slot.property}.from_value",
+            )
+
     def queue_animation_command(self, cmd: MotionCommand) -> None:
         """Enqueue a unified MotionCommand for the next commit.
 
@@ -2160,42 +2228,7 @@ class Runtime:
                 "or in event handlers"
             )
         if isinstance(cmd, (SetTarget, DriverSetTarget)):
-            slot = cmd.slot if isinstance(cmd, SetTarget) else cmd.anchor
-            node_index = self._coordinator.accepted_index or {}
-            node = node_index.get(slot.node_id)
-            if node is None:
-                raise ValueError(
-                    f"Cannot animate unknown view id {slot.node_id}"
-                )
-            if isinstance(cmd, DriverSetTarget):
-                expected = self.animated_driver_anchor(cmd.driver_id)
-                if expected != cmd.anchor:
-                    raise ValueError(
-                        f"Animated.Value driver {cmd.driver_id} binding changed before start"
-                    )
-            elif slot.slot_id is None:
-                from vyne.animations import ANIMATABLE_VIEW_PROPERTIES
-                from vyne.animations import animated_driver_ids
-                from vyne.extensions_registry import props_by_kind
-
-                bound_drivers = animated_driver_ids(node.props.get(slot.property))
-                if bound_drivers:
-                    raise ValueError(
-                        f"Property {slot.property!r} is bound to Animated.Value; "
-                        "animate the value instead"
-                    )
-                if (
-                    slot.property not in ANIMATABLE_VIEW_PROPERTIES
-                    or slot.property not in props_by_kind(node.kind)
-                ):
-                    raise ValueError(
-                        f"Property {slot.property!r} is not animatable "
-                        f"for {node.kind}"
-                    )
-            elif node.kind != "Canvas":
-                raise ValueError(
-                    "Canvas presentation slots require a Canvas node"
-                )
+            self._validate_animation_command(cmd)
         self._anim_pending.append(cmd)
 
     def _stage_imperative_binding(

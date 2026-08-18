@@ -90,9 +90,14 @@ class ExtensionLoweringTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "must be callable"):
             lower_element(_ring(on_complete="not-a-callable"))
 
-    def test_animated_value_rejected_on_extension_prop(self):
+    def test_animated_value_rejected_on_opaque_extension_prop(self):
         with self.assertRaisesRegex(ValueError, "animatable"):
-            lower_element(_ring(progress=_animated_node(0.5)))
+            lower_element(_ring(ring_color=_animated_node(0.5)))
+
+    def test_animated_value_accepted_on_typed_numeric_extension_prop(self):
+        node = lower_element(_ring(progress=_animated_node(0.5)))
+        self.assertEqual(node.kind, "TimerRing")
+        self.assertIn("progress", node.props)
 
     def test_animated_value_accepted_on_generic_prop_of_extension_kind(self):
         # Generic core props (width, opacity, ...) are animatable on every

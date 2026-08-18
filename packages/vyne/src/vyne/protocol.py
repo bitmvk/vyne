@@ -228,7 +228,6 @@ def _semantic_scroll_to(op: JsonObject, path: str) -> None:
 def _validate_motion_operation(op: JsonObject, *, path: str) -> None:
     """Validate the complete ordered animation control-plane operation."""
     from vyne.motion import CanvasOpIdentity
-    from vyne.spec.schema_v2 import ANIMATABLE_PROPS
 
     name = op["op"]
     if name in {"motion_cancel", "motion_driver_cancel"}:
@@ -310,7 +309,8 @@ def _validate_motion_operation(op: JsonObject, *, path: str) -> None:
             raise ValueError(f"{path}.slot_key does not match its slot fields")
 
         if slot_id is None:
-            if property_name not in ANIMATABLE_PROPS:
+            from vyne.extensions_registry import animatable_prop_names
+            if property_name not in animatable_prop_names():
                 raise ValueError(f"{path}.property is not animatable")
         else:
             canvas_fields = {

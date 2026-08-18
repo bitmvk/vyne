@@ -30,9 +30,15 @@ object TimerRingExtension {
                 kind = "TimerRing",
                 create = { TimerRingView(it.context) },
                 props = mapOf(
-                    "progress" to floatProp(0f) { view, v ->
-                        (view as TimerRingView).progress = v
-                    },
+                    "progress" to floatProp(
+                        default = 0f,
+                        minimum = 0f,
+                        maximum = 1f,
+                        read = { view -> (view as TimerRingView).progress },
+                        set = { view, v ->
+                            (view as TimerRingView).progress = v
+                        },
+                    ),
                     "ring_color" to colorProp(0xFF6750E8.toInt()) { view, c ->
                         (view as TimerRingView).ringColor = c
                     },

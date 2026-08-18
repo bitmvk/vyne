@@ -36,11 +36,19 @@ internal data class PropContext(
     val resetTextSize: (View) -> Unit = {},
 )
 
+/** Bridge-safe numeric description of one extension prop. */
+internal data class ExtensionNumericPropInfo(
+    val default: Float,
+    val minimum: Float?,
+    val maximum: Float?,
+)
+
 /** Bridge-safe description of one extension kind for the Python query. */
 internal data class ExtensionKindInfo(
     val props: Set<String>,
     val events: Set<String>,
     val container: Boolean,
+    val numericProps: Map<String, ExtensionNumericPropInfo>,
 )
 
 /**
@@ -79,6 +87,14 @@ internal class ElementRegistry {
     /** Register one kind spec. Rejects duplicates (core or extension). */
     fun register(spec: ElementSpec) {
         check(!frozen) { "ElementRegistry is frozen; cannot register ${spec.kind}" }
+        for ((name, handler) in spec.props) {
+            val numeric = handler as? FloatPropRegistration ?: continue
+            require(numeric.minimum == null || numeric.maximum == null ||
+                numeric.minimum <= numeric.maximum
+            ) {
+                "Float prop '$name' on ${spec.kind} has minimum > maximum"
+            }
+        }
         val existing = specs.putIfAbsent(spec.kind, spec)
         check(existing == null) { "Duplicate element kind: ${spec.kind}" }
     }
@@ -114,6 +130,27 @@ internal class ElementRegistry {
     }
 
     /**
+     * Scalar animation eligibility is type-derived.  Core props use the
+     * generated numeric-domain contracts; extension props animate when they
+     * were declared with the typed [FloatPropRegistration] helper.
+     */
+    fun isAnimatableProp(name: String, kind: String): Boolean {
+        if (!isValidProp(name, kind)) return false
+        if (kind in ElementContracts.KINDS) {
+            return name in ElementContracts.ANIMATABLE_PROPS
+        }
+        return (name in ElementContracts.GENERIC_PROPS &&
+            name in ElementContracts.ANIMATABLE_PROPS) ||
+            numericProp(name, kind) != null
+    }
+
+    /** Typed scalar metadata for an extension prop, or null when not numeric. */
+    fun numericProp(name: String, kind: String): FloatPropRegistration? {
+        val spec = specs[kind] ?: return null
+        return spec.props[name] as? FloatPropRegistration
+    }
+
+    /**
      * Event contract validity for listen/unlisten preflight.
      *
      * Core kinds keep today's behavior (any core event name is accepted;
@@ -143,6 +180,17 @@ internal class ElementRegistry {
                     props = spec.props.keys.toSet(),
                     events = spec.events.keys.toSet(),
                     container = spec.container,
+                    numericProps =
+                        spec.props
+                            .filterValues { it is FloatPropRegistration }
+                            .mapValues { (_, handler) ->
+                                val numeric = handler as FloatPropRegistration
+                                ExtensionNumericPropInfo(
+                                    default = numeric.default,
+                                    minimum = numeric.minimum,
+                                    maximum = numeric.maximum,
+                                )
+                            },
                 )
             }
 

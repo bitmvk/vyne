@@ -521,11 +521,7 @@ internal class Renderer(
                     }
                     val expectedSlot =
                         if (operation.slotId == null) {
-                            require(
-                                operation.property in
-                                    dev.vyne.generated.ElementContracts.ANIMATABLE_PROPS &&
-                                    registry.isValidProp(operation.property, kind),
-                            ) {
+                            require(registry.isAnimatableProp(operation.property, kind)) {
                                 "preflight: property '${operation.property}' " +
                                     "is not animatable for $kind"
                             }
@@ -543,9 +539,25 @@ internal class Renderer(
                     require(operation.slotKey == expectedSlot) {
                         "preflight: animation slot key mismatch"
                     }
-                    validateAnimationDomain(operation.property, operation.targets)
+                    val numeric =
+                        if (operation.slotId == null) {
+                            registry.numericProp(operation.property, kind)
+                        } else {
+                            null
+                        }
+                    validateAnimationDomain(
+                        operation.property,
+                        operation.targets,
+                        numeric = numeric,
+                        canvasSlot = operation.slotId != null,
+                    )
                     operation.fromValue?.let {
-                        validateAnimationDomain(operation.property, listOf(it))
+                        validateAnimationDomain(
+                            operation.property,
+                            listOf(it),
+                            numeric = numeric,
+                            canvasSlot = operation.slotId != null,
+                        )
                     }
                 }
                 is RenderOperation.MotionCancel -> {
@@ -635,16 +647,46 @@ internal class Renderer(
     private fun validateAnimationDomain(
         property: String,
         targets: List<Float>,
+        numeric: FloatPropRegistration?,
+        canvasSlot: Boolean,
     ) {
-        when (property) {
-            "opacity", "trim_start", "trim_end" ->
-                require(targets.all { it in 0f..1f }) {
-                    "preflight: $property animation must remain between 0 and 1"
-                }
-            "elevation", "width", "height", "radius", "r", "stroke_width" ->
-                require(targets.all { it >= 0f }) {
-                    "preflight: $property animation must be non-negative"
-                }
+        if (canvasSlot) {
+            when (property) {
+                "opacity", "trim_start", "trim_end" ->
+                    require(targets.all { it in 0f..1f }) {
+                        "preflight: $property animation must remain between 0 and 1"
+                    }
+                "elevation", "width", "height", "radius", "r", "stroke_width" ->
+                    require(targets.all { it >= 0f }) {
+                        "preflight: $property animation must be non-negative"
+                    }
+            }
+            return
+        }
+        ElementContracts.ANIMATABLE_PROP_MIN[property]?.let { minimum ->
+            require(targets.all { it >= minimum }) {
+                "preflight: $property animation must be >= $minimum"
+            }
+        }
+        ElementContracts.ANIMATABLE_PROP_MAX[property]?.let { maximum ->
+            require(targets.all { it <= maximum }) {
+                "preflight: $property animation must be <= $maximum"
+            }
+        }
+        if (property in ElementContracts.POSITIVE_ANIMATABLE_PROPS) {
+            require(targets.all { it > 0f }) {
+                "preflight: $property animation must be positive"
+            }
+        }
+        numeric?.minimum?.let { minimum ->
+            require(targets.all { it >= minimum }) {
+                "preflight: $property animation must be >= $minimum"
+            }
+        }
+        numeric?.maximum?.let { maximum ->
+            require(targets.all { it <= maximum }) {
+                "preflight: $property animation must be <= $maximum"
+            }
         }
     }
 
@@ -2697,10 +2739,7 @@ internal class Renderer(
         require(value.isFinite()) {
             "Animated expression produced a non-finite value"
         }
-        presentationEngine.writeSlot(
-            slotKey,
-            constrainPresentationValue(binding.property, value),
-        )
+        presentationEngine.writeSlot(slotKey, value)
     }
 
     private fun collectAnimatedDrivers(
@@ -3029,23 +3068,39 @@ internal class Renderer(
 
     /**
      * Ensure a View PropertyAdapter is registered with the engine.
-     * The adapter reads/writes the View's live property value.
+     *
+     * Core numeric props use their generated scalar domain; extension props
+     * declared with the typed float helper use their own metadata/read hook.
+     * The framework never casts to a custom view class.
      */
     private fun ensureViewAdapter(slotKey: String, view: View, prop: String) {
+        val kind = specs[view.id]?.kind
+        val numeric =
+            if (kind == null) null else registry.numericProp(prop, kind)
         presentationEngine.registerAdapter(slotKey, object : PresentationEngine.PropertyAdapter {
-            override fun read(): Float = readLiveProp(view, prop)
+            override fun read(): Float = readLiveProp(view, prop, numeric)
             override fun write(value: Float) {
                 applyResolvedProp(
                     view.id,
                     prop,
-                    constrainPresentationValue(prop, value).toDouble(),
+                    constrainPresentationValue(
+                        prop,
+                        value,
+                        numeric = numeric,
+                        canvasSlot = false,
+                    ).toDouble(),
                 )
             }
             override fun settle(value: Float) {
                 applyResolvedProp(
                     view.id,
                     prop,
-                    constrainPresentationValue(prop, value).toDouble(),
+                    constrainPresentationValue(
+                        prop,
+                        value,
+                        numeric = numeric,
+                        canvasSlot = false,
+                    ).toDouble(),
                 )
             }
         })
@@ -3070,26 +3125,65 @@ internal class Renderer(
                 canvasView.writeOpField(
                     opId,
                     field,
-                    constrainPresentationValue(field, value),
+                    constrainPresentationValue(
+                        field,
+                        value,
+                        numeric = null,
+                        canvasSlot = true,
+                    ),
                 )
             }
         })
     }
 
-    private fun constrainPresentationValue(property: String, value: Float): Float =
-        when (property) {
-            "opacity", "trim_start", "trim_end" -> value.coerceIn(0f, 1f)
-            "elevation", "width", "height", "radius", "r", "stroke_width" ->
-                value.coerceAtLeast(0f)
-            else -> value
+    private fun constrainPresentationValue(
+        property: String,
+        value: Float,
+        numeric: FloatPropRegistration?,
+        canvasSlot: Boolean,
+    ): Float {
+        if (canvasSlot) {
+            return when (property) {
+                "opacity", "trim_start", "trim_end" -> value.coerceIn(0f, 1f)
+                "elevation", "width", "height", "radius", "r", "stroke_width" ->
+                    value.coerceAtLeast(0f)
+                else -> value
+            }
         }
+        var constrained = value
+        ElementContracts.ANIMATABLE_PROP_MIN[property]?.let { minimum ->
+            constrained = constrained.coerceAtLeast(minimum.toFloat())
+        }
+        ElementContracts.ANIMATABLE_PROP_MAX[property]?.let { maximum ->
+            constrained = constrained.coerceAtMost(maximum.toFloat())
+        }
+        if (property in ElementContracts.POSITIVE_ANIMATABLE_PROPS) {
+            constrained = constrained.coerceAtLeast(Float.MIN_VALUE)
+        }
+        numeric?.minimum?.let { minimum ->
+            constrained = constrained.coerceAtLeast(minimum)
+        }
+        numeric?.maximum?.let { maximum ->
+            constrained = constrained.coerceAtMost(maximum)
+        }
+        return constrained
+    }
 
     /**
      * Read the current live value of a View property for animation.
+     *
+     * Well-known Android View properties are read directly.  Every other
+     * scalar prop uses an extension read hook when supplied, then the last
+     * accepted wire value, then the generated default.  This keeps the path
+     * generic for all numeric props without a per-property hardcoded switch.
      */
-    private fun readLiveProp(view: View, prop: String): Float {
+    private fun readLiveProp(
+        view: View,
+        prop: String,
+        numeric: FloatPropRegistration?,
+    ): Float {
         val density = view.context.resources.displayMetrics.density
-        return when (prop) {
+        val live = when (prop) {
             "alpha", "opacity" -> view.alpha
             "scale_x" -> view.scaleX
             "scale_y" -> view.scaleY
@@ -3112,8 +3206,27 @@ internal class Renderer(
                 pixelsToDp(pixels.toFloat(), density)
             }
             "stroke_dash_offset" -> if (view is PathView) view.dashOffset else 0f
-            else -> error("No presentation adapter for property '$prop'")
+            else -> null
         }
+        if (live != null) return live
+
+        numeric?.read?.let { read ->
+            return constrainPresentationValue(
+                prop,
+                read(view),
+                numeric = numeric,
+                canvasSlot = false,
+            )
+        }
+
+        propMementos[view.id]
+            ?.get(prop)
+            ?.acceptedWireValue
+            ?.let { value -> if (value is Number) return value.toFloat() }
+
+        numeric?.default?.let { return it }
+        ElementContracts.ANIMATABLE_PROP_DEFAULTS[prop]?.let { return it.toFloat() }
+        return 0f
     }
 
     /**

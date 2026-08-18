@@ -76,10 +76,13 @@ Design principles:
 - per-kind event sets (`ALL_EVENTS_BY_KIND`)
 - `GENERIC_PROPS` (the intersection of all core kind prop sets — the same
   derivation on both sides)
-- `ANIMATABLE_PROPS`
+- `ANIMATABLE_PROPS` and its numeric-domain companion maps
+  (`ANIMATABLE_PROP_DEFAULTS`, `ANIMATABLE_PROP_MIN`,
+  `ANIMATABLE_PROP_MAX`, `POSITIVE_ANIMATABLE_PROPS`)
 
-Python is the source; Kotlin is generated. If you add a prop or kind,
-regenerate the contracts.
+Scalar animatability is derived from the prop's value domain, not a
+hand-maintained flag. Python is the source; Kotlin is generated. If you add
+a prop or kind, regenerate the contracts.
 
 ## Extension kinds
 
@@ -90,8 +93,9 @@ regenerate the contracts.
   events
 
 `extensionKinds()` returns every non-core kind with its widget-specific
-props, events, and container flag — the exact shape Python's
-`ExtensionKindInfo.from_bridge` validates.
+props, events, container flag, and typed numeric-prop metadata — the exact
+shape Python's `ExtensionKindInfo.from_bridge` validates. Typed `floatProp`
+extension props are scalar-animatable automatically.
 
 ## Related
 

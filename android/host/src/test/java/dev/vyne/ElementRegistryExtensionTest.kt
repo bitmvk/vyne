@@ -21,7 +21,7 @@ class ElementRegistryExtensionTest {
         kind = "TimerRing",
         create = { error("create must not be invoked in registry tests") },
         props = mapOf(
-            "progress" to { _, _, _ -> },
+            "progress" to floatProp(0f) { _, _ -> },
             "ring_color" to { _, _, _ -> },
         ),
         events = mapOf(
@@ -77,6 +77,18 @@ class ElementRegistryExtensionTest {
     }
 
     @Test
+    fun typedFloatExtensionPropsAreAutomaticallyAnimatable() {
+        val registry = ElementRegistry()
+        registry.register(timerRingSpec())
+        assertTrue(registry.isAnimatableProp("progress", "TimerRing"))
+        assertTrue(registry.isAnimatableProp("opacity", "TimerRing"))
+        assertFalse(registry.isAnimatableProp("ring_color", "TimerRing"))
+        assertFalse(registry.isAnimatableProp("progress", "Text"))
+        val info = registry.extensionKinds().getValue("TimerRing")
+        assertEquals(0f, info.numericProps.getValue("progress").default)
+    }
+
+    @Test
     fun isValidPropExtensionKind() {
         val registry = ElementRegistry()
         registry.register(timerRingSpec())
@@ -109,6 +121,7 @@ class ElementRegistryExtensionTest {
         assertEquals(setOf("TimerRing", "Gauge"), kinds.keys)
         assertEquals(setOf("progress", "ring_color"), kinds.getValue("TimerRing").props)
         assertEquals(setOf("complete"), kinds.getValue("TimerRing").events)
+        assertEquals(setOf("progress"), kinds.getValue("TimerRing").numericProps.keys)
         assertEquals(setOf("value"), kinds.getValue("Gauge").props)
         // Generic props are not listed — they apply to every kind.
         assertFalse("width" in kinds.getValue("TimerRing").props)

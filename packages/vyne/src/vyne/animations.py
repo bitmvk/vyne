@@ -28,6 +28,7 @@ from vyne.motion import (
     Spring,
     Tween,
 )
+from vyne.spec.schema_v2 import ANIMATABLE_PROPS as ANIMATABLE_VIEW_PROPERTIES
 
 if TYPE_CHECKING:
     from vyne.refs import Ref, ViewHandle
@@ -51,22 +52,9 @@ _RETARGET_POLICIES = frozenset(
 # Public easing names for consumption by tests and documentation.
 ANIMATION_EASINGS = _TWEEN_EASINGS
 
-# Canonical primitive properties currently backed by native presentation
-# adapters. ``alpha`` remains a public compatibility alias for ``opacity``.
-ANIMATABLE_VIEW_PROPERTIES = frozenset({
-    "elevation",
-    "height",
-    "opacity",
-    "rotation",
-    "rotation_x",
-    "rotation_y",
-    "scale_x",
-    "scale_y",
-    "stroke_dash_offset",
-    "translation_x",
-    "translation_y",
-    "width",
-})
+# Scalar-animatable canonical properties.  This set is derived from the
+# schema's numeric value domains; it is no longer a hand-maintained allowlist.
+# ``alpha`` remains a public compatibility alias for ``opacity``.
 _PROPERTY_ALIASES = {"alpha": "opacity"}
 
 
@@ -1104,8 +1092,6 @@ def animate(
         )
         if canonical in canonical_destinations:
             raise ValueError(f"Duplicate animation destination for {canonical!r}")
-        if canonical not in ANIMATABLE_VIEW_PROPERTIES:
-            raise ValueError(f"Property {name!r} is not animatable")
         canonical_destinations[canonical] = destination
 
     def source_for(name: str) -> float | None:
@@ -1129,28 +1115,17 @@ def animate(
         return _finite_number(from_, name="from_")
 
     commands: list[SetTarget] = []
-    from vyne.extensions_registry import resolve_prop
-
     for name, destination in canonical_destinations.items():
         targets = _animation_targets(destination)
-        command = SetTarget(
-            slot=PresentationSlot(node_id=view_id, property=name),
-            spec=spec,
-            target=targets[0],
-            keyframes=targets[1:],
-            from_value=source_for(name),
+        commands.append(
+            SetTarget(
+                slot=PresentationSlot(node_id=view_id, property=name),
+                spec=spec,
+                target=targets[0],
+                keyframes=targets[1:],
+                from_value=source_for(name),
+            )
         )
-        for index, target_value in enumerate(command.targets):
-            resolve_prop(name).value.validate(
-                target_value,
-                path=f"animation.{name}.targets[{index}]",
-            )
-        if command.from_value is not None:
-            resolve_prop(name).value.validate(
-                command.from_value,
-                path=f"animation.{name}.from_value",
-            )
-        commands.append(command)
 
     return _start_commands(
         runtime,
@@ -1167,6 +1142,11 @@ def _start_commands(
     on_complete: Callable[..., Any] | None,
     on_cancel: Callable[..., Any] | None,
 ) -> AnimationHandle | AnimationGroupHandle:
+    # Validate every command before the first animation id is allocated, so
+    # a multi-property group cannot leave a partially-started animation when
+    # one destination is invalid.
+    runtime.validate_animation_commands(commands)
+
     if len(commands) == 1:
         return runtime.start_animation(
             commands[0],

@@ -336,15 +336,47 @@ internal fun toFloat(value: Any?, default: Float): Float = toSp(value, default)
 // ---------------------------------------------------------------------------
 
 /**
+ * Typed scalar prop registration returned by [floatProp].
+ *
+ * It is still callable as an ordinary ElementSpec prop handler, but it also
+ * carries the metadata the registry needs to expose a numeric contract to
+ * Python.  Every float prop is therefore scalar-animatable automatically.
+ */
+internal class FloatPropRegistration(
+    val default: Float,
+    val minimum: Float? = null,
+    val maximum: Float? = null,
+    val read: ((View) -> Float)? = null,
+    private val setter: (View, Float) -> Unit,
+) : (PropContext, View, Any?) -> Unit {
+    override fun invoke(
+        context: PropContext,
+        view: View,
+        value: Any?,
+    ) {
+        setter(view, toFloat(value, default))
+    }
+}
+
+/**
  * Prop handlers: one lambda per prop; a null value means REMOVAL, so each
  * handler applies its default on null. (Python drops explicit nulls before
  * the wire, so null only ever means removal.)
  */
 internal fun floatProp(
     default: Float,
+    minimum: Float? = null,
+    maximum: Float? = null,
+    read: ((View) -> Float)? = null,
     set: (View, Float) -> Unit,
-): (PropContext, View, Any?) -> Unit =
-    { _, view, value -> set(view, toFloat(value, default)) }
+): FloatPropRegistration =
+    FloatPropRegistration(
+        default = default,
+        minimum = minimum,
+        maximum = maximum,
+        read = read,
+        setter = set,
+    )
 
 internal fun colorProp(
     default: Int,

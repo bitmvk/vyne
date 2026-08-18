@@ -28,6 +28,7 @@ from vyne.values import (
     is_valid_dash_array,
 )
 from vyne.spec.schema_v2 import (
+    ALL_PROPS,
     ANIMATABLE_PROPS,
     PROPS_BY_KIND,
     PRIMITIVE_KINDS,
@@ -228,11 +229,17 @@ class SchemaCompletenessTests(unittest.TestCase):
         self.assertIn("TextInput", EVENT_SPECS["text_change"].applies_to)
 
     def test_animatable_props(self):
-        expected = {"opacity", "rotation", "rotation_x", "rotation_y",
-                    "scale_x", "scale_y", "translation_x", "translation_y",
-                    "elevation", "stroke_dash_offset",
-                    "width", "height"}
+        # Scalar animation eligibility is derived from numeric value domains.
+        expected = {
+            name
+            for name, prop in ALL_PROPS.items()
+            if prop.value.finite or prop.value.dimension or prop.animatable
+        }
         self.assertEqual(ANIMATABLE_PROPS, expected)
+        self.assertLessEqual(
+            {"opacity", "rotation", "scale_x", "width", "height"},
+            ANIMATABLE_PROPS,
+        )
 
 
 # ---------------------------------------------------------------------------

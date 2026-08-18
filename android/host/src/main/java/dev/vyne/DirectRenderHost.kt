@@ -61,9 +61,16 @@ internal class DirectRenderHost(
      * every non-core kind in the frozen registry. Encoded as nested lists
      * so Chaquopy's Java/Python conversion is unambiguous.
      */
-    fun extensionKinds(): Map<String, List<List<Any>>> =
+    fun extensionKinds(): Map<String, List<Any>> =
         renderer.registryAccessor.extensionKinds().mapValues { (_, info) ->
-            listOf(info.props.toList(), info.events.toList(), listOf(info.container))
+            listOf(
+                info.props.toList(),
+                info.events.toList(),
+                listOf(info.container),
+                info.numericProps.mapValues { (_, numeric) ->
+                    listOf(numeric.default, numeric.minimum, numeric.maximum)
+                },
+            )
         }
 
     /** Wrap a Python callable in the Activity's ordered bridge-work queue. */

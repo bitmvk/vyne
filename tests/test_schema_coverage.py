@@ -18,6 +18,7 @@ from vyne.spec.schema_v2 import (
     GENERIC_PROP_NAMES,
     CANVAS_OP_SPECS,
     EVENT_SPECS,
+    is_animatable_prop_spec,
 )
 
 
@@ -64,11 +65,28 @@ class PropSpecCoverage(unittest.TestCase):
                 self.fail(f"Prop {name!r} not in any PROPS_BY_KIND entry")
 
     def test_animatable_props_consistency(self):
+        # Animation eligibility is derived from the scalar value domain:
+        # every flagged prop is included, and numeric domains are included
+        # automatically even when their original animatable flag is False.
         for name, prop in ALL_PROPS.items():
-            if prop.animatable and name not in ANIMATABLE_PROPS:
-                self.fail(f"Animatable prop {name!r} not in ANIMATABLE_PROPS")
-            if name in ANIMATABLE_PROPS and not prop.animatable:
-                self.fail(f"ANIMATABLE_PROPS includes non-animatable {name!r}")
+            if not is_animatable_prop_spec(prop):
+                self.assertNotIn(
+                    name,
+                    ANIMATABLE_PROPS,
+                    f"ANIMATABLE_PROPS includes non-animatable {name!r}",
+                )
+                continue
+            self.assertIn(
+                name,
+                ANIMATABLE_PROPS,
+                f"Animatable prop {name!r} not in ANIMATABLE_PROPS",
+            )
+            if prop.animatable:
+                continue
+            self.assertTrue(
+                prop.value.finite or prop.value.dimension,
+                f"Automatically animatable prop {name!r} must have a scalar numeric domain",
+            )
 
     def test_generic_props_have_no_applies_to_or_match(self):
         # Generic props (in GENERIC_PROP_NAMES) either have no applies_to

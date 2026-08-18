@@ -116,10 +116,10 @@ def _exact_types(types) -> str:
         return "tuple[Any, ...]"
     return " | ".join(t.__name__ for t in types)
 
-def prop_type(prop) -> str:
-    """Type expression for one PropSpec, widening animatable props."""
+def prop_type(schema, prop) -> str:
+    """Type expression for one PropSpec, widening scalar-animatable props."""
     base = python_type(prop.value)
-    if not prop.animatable:
+    if not schema.is_animatable_prop_spec(prop):
         return base
     return "AnimatableNumber" if base == "int | float" else f"{base} | AnimatedNode"
 
@@ -137,7 +137,7 @@ def build_model(schema):
     kind_props: dict[str, dict[str, str]] = {}
     for kind in schema.PRIMITIVE_KINDS:
         fields = {
-            name: prop_type(schema.ALL_PROPS[name])
+            name: prop_type(schema, schema.ALL_PROPS[name])
             for name in sorted(schema.PROPS_BY_KIND[kind])
             if not name.startswith("_")
         }
@@ -155,7 +155,7 @@ def build_model(schema):
         prop = schema.ALL_PROPS.get(canonical)
         if prop is None:
             raise ValueError(f"Alias {alias!r} targets unknown canonical prop {canonical!r}")
-        python_only_types[alias] = prop_type(prop)
+        python_only_types[alias] = prop_type(schema, prop)
     shared |= set(python_only_types)
 
     containers = container_kinds(schema)

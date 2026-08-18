@@ -19,12 +19,15 @@ from tests.support.extension_kinds import (
 from vyne.extensions_registry import (
     GENERIC_PROPS,
     ExtensionKindInfo,
+    ExtensionNumericProp,
     event_name_for_prop,
+    is_animatable_prop,
     is_event_prop,
     props_by_kind,
     resolve_event,
     resolve_kind,
     resolve_prop,
+    resolve_prop_for_kind,
     snapshot,
     sync_from_host,
 )
@@ -46,10 +49,18 @@ class SyncFromHostTests(unittest.TestCase):
         sync_from_host({
             "A": (["p1"], ["e1"], [False]),
             "B": ExtensionKindInfo(props=frozenset({"p2"}), events=frozenset({"e2"})),
+            "C": (
+                ["level"],
+                [],
+                [False],
+                {"level": ExtensionNumericProp(default=0.0, minimum=0.0, maximum=10.0)},
+            ),
         })
         self.assertIn("p1", props_by_kind("A"))
         self.assertIn("p2", props_by_kind("B"))
         self.assertTrue(is_event_prop("on_e2", "B"))
+        self.assertTrue(is_animatable_prop("C", "level"))
+        self.assertEqual(resolve_prop_for_kind("C", "level").default, 0.0)
 
     def test_sync_replaces_previous_tables(self):
         sync_from_host({"Old": (["p"], [], [False])})
@@ -86,6 +97,16 @@ class ResolverPrecedenceTests(unittest.TestCase):
         self.assertIn("progress", props)
         self.assertIn("ring_color", props)
         self.assertNotIn("text", props)  # widget-specific core props stay out
+
+    def test_extension_numeric_prop_is_animatable_and_kind_scoped(self):
+        self.assertTrue(is_animatable_prop("TimerRing", "progress"))
+        self.assertTrue(is_animatable_prop("TimerRing", "opacity"))
+        self.assertFalse(is_animatable_prop("TimerRing", "ring_color"))
+        self.assertFalse(is_animatable_prop("Box", "progress"))
+        spec = resolve_prop_for_kind("TimerRing", "progress")
+        self.assertEqual(spec.value.min_value, 0.0)
+        self.assertEqual(spec.value.max_value, 1.0)
+        self.assertTrue(spec.animatable)
 
     def test_extension_event_prop_unknown_kind(self):
         self.assertFalse(is_event_prop("on_complete", "Unknown"))

@@ -8,7 +8,7 @@ Regenerate with:
 Source of truth: ``vyne.spec.schema_v2``.
 """
 
-# schema-v2 source hash: 5e5fd3dc4f20d503
+# schema-v2 source hash: c1bcc459ca06a304
 
 from typing import Any, Literal, TypeAlias, TypedDict, Unpack
 
@@ -26,9 +26,9 @@ ElementKey: TypeAlias = str | int | tuple[ElementKey, ...]
 
 class BaseProps(TypedDict, total=False):
     accessibility_checked: bool | None
-    accessibility_range_current: int | float | None
-    accessibility_range_max: int | float | None
-    accessibility_range_min: int | float | None
+    accessibility_range_current: AnimatableNumber | None
+    accessibility_range_max: AnimatableNumber | None
+    accessibility_range_min: AnimatableNumber | None
     accessibility_role: Literal['adjustable', 'button', 'checkbox', 'dropdown_list', 'header', 'image', 'keyboard_key', 'link', 'none', 'progress_bar', 'radio_button', 'search', 'slider', 'switch', 'tab', 'text', 'toolbar'] | None
     accessibility_selected: bool | None
     accessibility_state_checked: bool | None
@@ -37,14 +37,14 @@ class BaseProps(TypedDict, total=False):
     alpha: AnimatableNumber | None
     background_color: str | None
     border_color: str | None
-    border_width: int | float | None
+    border_width: AnimatableNumber | None
     clickable: bool | None
     content_description: str | None
-    corner_radius: int | float | None
-    corner_radius_bottom_left: int | float | None
-    corner_radius_bottom_right: int | float | None
-    corner_radius_top_left: int | float | None
-    corner_radius_top_right: int | float | None
+    corner_radius: AnimatableNumber | None
+    corner_radius_bottom_left: AnimatableNumber | None
+    corner_radius_bottom_right: AnimatableNumber | None
+    corner_radius_top_left: AnimatableNumber | None
+    corner_radius_top_right: AnimatableNumber | None
     decoration: Decoration | dict[str, Any] | None
     elevation: AnimatableNumber | None
     enabled: bool | None
@@ -52,13 +52,13 @@ class BaseProps(TypedDict, total=False):
     height: str | int | float | AnimatedNode | None
     key: ElementKey | None
     lp_gravity: Literal['bottom', 'bottom|end', 'bottom|start', 'center', 'center_horizontal', 'center_vertical', 'end', 'start', 'top', 'top|end', 'top|start'] | None
-    lp_weight: int | float | None
-    margin_bottom: int | float | None
-    margin_end: int | float | None
-    margin_start: int | float | None
-    margin_top: int | float | None
-    min_height: int | float | None
-    min_width: int | float | None
+    lp_weight: AnimatableNumber | None
+    margin_bottom: AnimatableNumber | None
+    margin_end: AnimatableNumber | None
+    margin_start: AnimatableNumber | None
+    margin_top: AnimatableNumber | None
+    min_height: AnimatableNumber | None
+    min_width: AnimatableNumber | None
     on_accessibility_progress: EventCallback | None
     on_click: EventCallback | None
     on_long_click: EventCallback | None
@@ -67,11 +67,11 @@ class BaseProps(TypedDict, total=False):
     on_pointer_move: EventCallback | None
     on_pointer_up: EventCallback | None
     opacity: AnimatableNumber | None
-    padding: int | float | None
-    padding_bottom: int | float | None
-    padding_end: int | float | None
-    padding_start: int | float | None
-    padding_top: int | float | None
+    padding: AnimatableNumber | None
+    padding_bottom: AnimatableNumber | None
+    padding_end: AnimatableNumber | None
+    padding_start: AnimatableNumber | None
+    padding_top: AnimatableNumber | None
     pointer_capture_axis: Literal['horizontal', 'vertical'] | None
     ref: Ref | None
     ripple_color: str | None
@@ -91,8 +91,8 @@ class BaseProps(TypedDict, total=False):
 class ContainerProps(BaseProps, total=False):
     align_items: Literal['center', 'end', 'start', 'stretch'] | None
     justify_content: Literal['center', 'end', 'space_around', 'space_between', 'space_evenly', 'start'] | None
-    max_height: int | float | None
-    max_width: int | float | None
+    max_height: AnimatableNumber | None
+    max_width: AnimatableNumber | None
     overflow: Literal['hidden', 'visible'] | None
 
 class BoxProps(ContainerProps, total=False):
@@ -111,9 +111,9 @@ class ScrollProps(ContainerProps, total=False):
     interactive_scrollbar: bool | None
 
 class TextProps(BaseProps, total=False):
-    font_size: int | float | None
+    font_size: AnimatableNumber | None
     include_font_padding: bool | None
-    line_height: int | float | None
+    line_height: AnimatableNumber | None
     text: str | None
     text_color: str | None
 
@@ -122,7 +122,7 @@ class TextInputProps(BaseProps, total=False):
     blur_on_submit: bool | None
     blur_on_tap_outside: bool | None
     focused: bool | None
-    font_size: int | float | None
+    font_size: AnimatableNumber | None
     hint: str | None
     on_editor_action: EventCallback | None
     on_focus_change: EventCallback | None
@@ -143,7 +143,7 @@ class PathProps(BaseProps, total=False):
     stroke_dash_offset: AnimatableNumber | None
     stroke_line_cap: Literal['butt', 'round', 'square'] | None
     stroke_line_join: Literal['bevel', 'miter', 'round'] | None
-    stroke_width: int | float | None
+    stroke_width: AnimatableNumber | None
 
 class CanvasProps(BaseProps, total=False):
     draw: list[Any] | None

@@ -22,10 +22,21 @@ The Kotlin engine matches commands to active transitions by this key.
 
 ## Animatable View properties
 
+Every scalar numeric property is animatable.  Eligibility is derived from
+the prop's value domain, not a hand-maintained list, so numeric props such
+as `min_width`, `max_width`, `border_width`, `padding_top`, `font_size`,
+and the corner radii work automatically.
+
 ```text
 elevation, height, opacity, rotation, rotation_x, rotation_y,
-scale_x, scale_y, stroke_dash_offset, translation_x, translation_y, width
+scale_x, scale_y, stroke_dash_offset, translation_x, translation_y, width,
+min_width, max_width, min_height, max_height,
+padding_*, margin_*, corner_radius_*, border_width,
+font_size, line_height, lp_weight, accessibility_range_*, ...
 ```
+
+Extension props declared with Kotlin's `floatProp` helper are scalar numeric
+props too and animate automatically.
 
 Aliases: `alpha` -> `opacity`, `x` -> `translation_x`, `y` ->
 `translation_y`. In `animate()`, `scale` expands to both scale axes.

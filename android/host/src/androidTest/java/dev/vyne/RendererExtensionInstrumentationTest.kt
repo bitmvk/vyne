@@ -159,6 +159,26 @@ class RendererExtensionInstrumentationTest {
                 )
             "unlisten" ->
                 RenderOperation.Unlisten(op.getInt("id"), op.getString("event"))
+            "motion_set_target" ->
+                RenderOperation.MotionSetTarget(
+                    animationId = op.getLong("animation_id"),
+                    slotKey = op.getString("slot_key"),
+                    nodeId = op.getInt("node_id"),
+                    property = op.getString("property"),
+                    targets = op.getJSONArray("targets").let { targets ->
+                        (0 until targets.length()).map { targets.getDouble(it).toFloat() }
+                    },
+                    slotId = op.optString("slot_id").takeIf { it.isNotBlank() },
+                    specType = op.getString("spec_type"),
+                    fromValue = op.optDouble("from_value").takeIf { op.has("from_value") }?.toFloat(),
+                    durationMs = op.optLong("duration_ms", 0L),
+                    easing = op.optString("easing", "linear"),
+                    dampingRatio = op.optDouble("damping_ratio", 0.8).toFloat(),
+                    stiffness = op.optDouble("stiffness", 380.0).toFloat(),
+                    restValueThreshold = op.optDouble("rest_value_threshold", 0.01).toFloat(),
+                    restVelocityThreshold = op.optDouble("rest_velocity_threshold", 0.01).toFloat(),
+                    retargetPolicy = op.optString("retarget", "restart"),
+                )
             else -> error("unsupported test op: ${op.getString("op")}")
         }
 
@@ -330,7 +350,77 @@ class RendererExtensionInstrumentationTest {
             assertNotNull(info)
             assertEquals(setOf("progress", "ring_color"), info.props)
             assertEquals(setOf("complete"), info.events)
+            assertEquals(setOf("progress"), info.numericProps.keys)
             assertTrue("Text" !in kinds)
+        } finally {
+            renderer.dispose()
+        }
+    }
+
+    @Test
+    fun typedExtensionFloatPropAnimatesThroughTheGenericEngine() {
+        val renderer = renderer()
+        try {
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyMessage(JSONObject("""
+                    {"type":"commit","ops":[
+                        {"op":"create","id":1,"kind":"TimerRing"},
+                        {"op":"set_prop","id":1,"name":"progress","value":0.1},
+                        {"op":"insert_child","parent":0,"child":1,"index":0}
+                    ]}
+                """))
+            )
+            // duration_ms=0 settles synchronously, so no frame clock wait is
+            // needed in instrumentation.
+            val result = renderer.applyMessage(JSONObject("""
+                {"type":"commit","ops":[
+                    {"op":"motion_set_target","animation_id":1,
+                     "slot_key":"view:1:prop:progress","node_id":1,
+                     "property":"progress","targets":[0.9],
+                     "spec_type":"tween","duration_ms":0,
+                     "easing":"linear","retarget":"restart"}
+                ]}
+            """))
+            assertEquals(Renderer.ApplyResult.OK, result)
+            val view = renderer.root.getChildAt(0) as? TestProgressView
+            assertEquals(0.9f, view?.progress, "extension float prop must animate")
+        } finally {
+            renderer.dispose()
+        }
+    }
+
+    @Test
+    fun previouslyUnflaggedNumericCorePropAnimates() {
+        val sink = TestEventSink()
+        val renderer = Renderer(context, sink, registry = defaultRegistry(context))
+        try {
+            assertEquals(
+                Renderer.ApplyResult.OK,
+                renderer.applyMessage(JSONObject("""
+                    {"type":"commit","ops":[
+                        {"op":"create","id":1,"kind":"Box"},
+                        {"op":"insert_child","parent":0,"child":1,"index":0}
+                    ]}
+                """))
+            )
+            val result = renderer.applyMessage(JSONObject("""
+                {"type":"commit","ops":[
+                    {"op":"motion_set_target","animation_id":2,
+                     "slot_key":"view:1:prop:min_width","node_id":1,
+                     "property":"min_width","targets":[80],
+                     "spec_type":"tween","duration_ms":0,
+                     "easing":"linear","retarget":"restart"}
+                ]}
+            """))
+            assertEquals(Renderer.ApplyResult.OK, result)
+            val view = renderer.root.getChildAt(0)
+            val density = context.resources.displayMetrics.density
+            assertEquals(
+                (80 * density).toInt(),
+                view?.minimumWidth,
+                "unflagged numeric core prop must animate through its normal applicator",
+            )
         } finally {
             renderer.dispose()
         }

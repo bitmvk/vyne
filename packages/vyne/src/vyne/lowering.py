@@ -41,10 +41,12 @@ from vyne.values import (
 )
 
 from vyne.extensions_registry import (
+    is_animatable_prop,
     is_event_prop,
     props_by_kind,
     resolve_kind,
     resolve_prop,
+    resolve_prop_for_kind,
 )
 from vyne.spec.schema_v2 import (
     PRIMITIVE_KINDS,
@@ -141,21 +143,19 @@ def lower_element(
             continue
         if name not in allowed_props:
             raise ValueError(f"Unsupported prop {name!r} for {kind}")
-        prop_spec = resolve_prop(name)
+        prop_spec = resolve_prop_for_kind(kind, name)
         if prop_spec is not None:
             prop_spec.value.validate(value, path=f"props.{name}")
         else:
-            # Extension props declare no value specs: enforce the bridge-safe
-            # value domain here so malformed values fail at lowering, not at
-            # commit time.
+            # Opaque extension props declare no value specs: enforce the
+            # bridge-safe value domain here so malformed values fail at
+            # lowering, not at commit time.
             from vyne.protocol import ensure_bridge_value
             ensure_bridge_value(value, prop_name=name)
-        if is_animated_node_payload(value) and (
-            prop_spec is None or not prop_spec.animatable
-        ):
+        if is_animated_node_payload(value) and not is_animatable_prop(kind, name):
             raise ValueError(
                 f"Animated values are not supported for prop {name!r}; "
-                "it is supported by Canvas numeric fields and animatable props"
+                "it is supported by Canvas numeric fields and animatable scalar props"
             )
 
     # 6b. Deep validation for Canvas/Path ops
@@ -319,7 +319,7 @@ def _materialize_defaults(kind: str) -> dict[str, Any]:
     defaults: dict[str, Any] = {}
     allowed = props_by_kind(kind)
     for prop_name in allowed:
-        spec = resolve_prop(prop_name)
+        spec = resolve_prop_for_kind(kind, prop_name)
         if spec is not None and spec.default is not None and not spec.drop_default:
             defaults[prop_name] = spec.default
     return defaults

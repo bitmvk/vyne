@@ -764,7 +764,30 @@ GENERIC_PROP_NAMES: frozenset[str] = frozenset(
     p.name for p in _generic_props if not p.applies_to
 )
 
+# Animation eligibility -------------------------------------------------------
+#
+# Scalar presentation animation is driven by the value domain, not by a
+# hand-maintained property allowlist.  Any prop whose value is a finite
+# number, or whose value is dimension-like and therefore accepts a numeric
+# dp target, can be driven by the native scalar engine.  Non-scalar domains
+# (colors, booleans, enums, collections) remain non-animatable until the
+# typed presentation-value engine lands.
+
+def _supports_scalar_animation(value_spec: ValueSpec) -> bool:
+    """True when *value_spec* has a continuous numeric animation domain."""
+    return bool(value_spec.finite or value_spec.dimension)
+
+
+def is_animatable_prop_spec(prop_spec: PropSpec) -> bool:
+    """True when *prop_spec* is animatable by the current scalar engine.
+
+    This is intentionally derived from the value domain so new numeric props
+    become animatable without a separate opt-in flag.
+    """
+    return prop_spec.animatable or _supports_scalar_animation(prop_spec.value)
+
+
 # Animatable props
 ANIMATABLE_PROPS: frozenset[str] = frozenset(
-    p.name for p in ALL_PROPS.values() if p.animatable
+    p.name for p in ALL_PROPS.values() if is_animatable_prop_spec(p)
 )

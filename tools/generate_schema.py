@@ -31,8 +31,17 @@ def _schema_hash() -> str:
     return hashlib.sha256(source).hexdigest()[:16]
 
 
+def _numeric(value: object) -> float | None:
+    """Return a finite Kotlin Double for numeric scalar metadata, or None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    return result if result == result and result not in (float("inf"), float("-inf")) else None
+
+
 def _generate(schema_hash: str) -> str:
     from vyne.spec.schema_v2 import (
+        ALL_PROPS,
         ANIMATABLE_PROPS,
         EVENT_SPECS,
         PRIMITIVE_KINDS,
@@ -79,6 +88,47 @@ def _generate(schema_hash: str) -> str:
             "",
         ]
     )
+    animatable_props = sorted(ANIMATABLE_PROPS)
+    defaults = {
+        name: value
+        for name in animatable_props
+        if (value := _numeric(ALL_PROPS[name].default)) is not None
+    }
+    lines.append("    val ANIMATABLE_PROP_DEFAULTS: Map<String, Double> = mapOf(")
+    for name in sorted(defaults):
+        lines.append(f'        "{name}" to {defaults[name]!r},')
+    lines.append("    )")
+    lines.append("")
+    minima = {}
+    maxima = {}
+    positive = []
+    for name in animatable_props:
+        spec = ALL_PROPS[name].value
+        minimum = _numeric(spec.min_value)
+        if minimum is None and (spec.non_negative or spec.dimension):
+            minimum = 0.0
+        maximum = _numeric(spec.max_value)
+        if minimum is not None:
+            minima[name] = minimum
+        if maximum is not None:
+            maxima[name] = maximum
+        if spec.positive:
+            positive.append(name)
+    lines.append("    val ANIMATABLE_PROP_MIN: Map<String, Double> = mapOf(")
+    for name in sorted(minima):
+        lines.append(f'        "{name}" to {minima[name]!r},')
+    lines.append("    )")
+    lines.append("")
+    lines.append("    val ANIMATABLE_PROP_MAX: Map<String, Double> = mapOf(")
+    for name in sorted(maxima):
+        lines.append(f'        "{name}" to {maxima[name]!r},')
+    lines.append("    )")
+    lines.append("")
+    lines.append("    val POSITIVE_ANIMATABLE_PROPS: Set<String> = setOf(")
+    for name in sorted(positive):
+        lines.append(f'        "{name}",')
+    lines.append("    )")
+    lines.append("")
     events_by_kind: dict[str, list[str]] = {}
     for kind in kinds:
         events = sorted(

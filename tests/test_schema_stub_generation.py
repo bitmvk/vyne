@@ -18,7 +18,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from vyne.spec.model import ValueSpec
-from vyne.spec.schema_v2 import ALL_PROPS, EVENT_SPECS, PRIMITIVE_KINDS, PROPS_BY_KIND
+from vyne.spec.schema_v2 import (
+    ALL_PROPS,
+    EVENT_SPECS,
+    PRIMITIVE_KINDS,
+    PROPS_BY_KIND,
+    is_animatable_prop_spec,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR = REPO_ROOT / "scripts" / "generate_schema_stubs.py"
@@ -35,8 +41,8 @@ SHARED_PYTHON_ONLY = frozenset(
 PYTHON_ONLY_TYPES = {
     "key": "ElementKey",
     "decoration": "Decoration | dict[str, Any]", "ref": "Ref",
-    "alpha": "AnimatableNumber", "padding": "int | float",
-    "corner_radius": "int | float", "accessibility_state_checked": "bool",
+    "alpha": "AnimatableNumber", "padding": "AnimatableNumber",
+    "corner_radius": "AnimatableNumber", "accessibility_state_checked": "bool",
     "accessibility_state_selected": "bool",
 }
 CONTAINER_KINDS_SET = frozenset({"Box", "Layout", "Scroll", "HorizontalScroll"})
@@ -118,11 +124,16 @@ class ValueTypeMappingTests(unittest.TestCase):
         def prop(value, animatable):
             return type("P", (), {"value": value, "animatable": animatable})()
 
-        self.assertEqual(gen.prop_type(prop(ValueSpec(finite=True), True)), "AnimatableNumber")
-        self.assertEqual(gen.prop_type(prop(ValueSpec(finite=True), False)), "int | float")
+        schema = SimpleNamespace(is_animatable_prop_spec=is_animatable_prop_spec)
+        self.assertEqual(gen.prop_type(schema, prop(ValueSpec(finite=True), True)), "AnimatableNumber")
+        self.assertEqual(gen.prop_type(schema, prop(ValueSpec(finite=True), False)), "AnimatableNumber")
         self.assertEqual(
-            gen.prop_type(prop(ValueSpec(exact_types=(str, int, float), dimension=True), True)),
+            gen.prop_type(schema, prop(ValueSpec(exact_types=(str, int, float), dimension=True), True)),
             "str | int | float | AnimatedNode",
+        )
+        self.assertEqual(
+            gen.prop_type(schema, prop(ValueSpec(type_name="str"), False)),
+            "str",
         )
 
 def _fake_schema():
@@ -131,6 +142,7 @@ def _fake_schema():
         ALL_PROPS=dict(ALL_PROPS),
         EVENT_SPECS=dict(EVENT_SPECS),
         PROPS_BY_KIND={k: frozenset(v) for k, v in PROPS_BY_KIND.items()},
+        is_animatable_prop_spec=is_animatable_prop_spec,
     )
 
 def _prop(default=None):
