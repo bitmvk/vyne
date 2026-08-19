@@ -25,13 +25,13 @@ from vyne.cli.android import (
     build_project,
     install_project,
     launch_project,
-    run_project,
     test_project,
 )
 from vyne.cli.project import load_project
 from vyne.cli.doctor import run_doctor
 from vyne.cli.extension_new import create_extension
 from vyne.cli.new import create_project
+from vyne.cli.live import run_dev
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             parser.print_help()
             return 2
+
+        if args.command == "run":
+            return run_dev(args)
 
         handler = getattr(args, "handler", None)
         if handler is not None:
@@ -107,7 +110,12 @@ def _parser() -> ArgumentParser:
     install = subparsers.add_parser("install", help="build and install the debug APK")
     install.set_defaults(handler=_install)
 
-    run = subparsers.add_parser("run", help="build, install, and launch the app")
+    run = subparsers.add_parser(
+        "run", help="build, install, launch, then keep a dev loop (R=rebuild, r=hot reload)"
+    )
+    run.add_argument(
+        "--once", action="store_true", help="build/install/launch and exit (no dev loop)"
+    )
     run.set_defaults(handler=_run)
 
     launch = subparsers.add_parser("launch", help="launch an already-installed app")
@@ -140,10 +148,8 @@ def _install(_args) -> int:
     return 0
 
 
-def _run(_args) -> int:
-    apk = run_project()
-    print(f"Installed and launched APK: {apk}")
-    return 0
+def _run(args) -> int:
+    return run_dev(args)
 
 
 def _launch(_args) -> int:

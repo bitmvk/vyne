@@ -122,6 +122,7 @@ def start_direct(
     """Mount an app and publish its commits through the direct host."""
     from vyne.direct_transport import DirectTransport
     from vyne.extensions_registry import sync_from_host
+    from vyne import live as _live
 
     global _session
 
@@ -135,6 +136,10 @@ def start_direct(
     candidate_dispatcher: AsyncRuntimeDispatcher | None = None
     try:
         sync_from_host(_query_extension_kinds(host))
+        # Dev-only hot reload: when the device carries a pushed live tree,
+        # resolve the app module from it before anything is imported. This
+        # must run ahead of _start_registered_app's import/reload.
+        _live.install(host, module_name=module_name)
         launch_data = _native_launch_data(action, uri, extras, sequence)
         session_id = uuid4().hex
         candidate_transport = DirectTransport(host, session_id)

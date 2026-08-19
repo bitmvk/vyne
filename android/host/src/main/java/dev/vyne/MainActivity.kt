@@ -264,6 +264,19 @@ open class MainActivity : ComponentActivity(), VyneCallbackQueue.CallbackBridge 
         }
     }
 
+    /**
+     * Dev-only hot reload hook (``vyne live push``): re-run the app's Python
+     * by recreating this Activity. The process stays alive, so on recreate
+     * ``start_direct`` re-imports the app module and ``vyne.live`` resolves
+     * the pushed copies from the live tree. Called by the loader watcher
+     * from a non-UI thread.
+     */
+    fun requestReload() {
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed) recreate()
+        }
+    }
+
     /** Execute one launch selected by the activity's bridge-work queue. */
     private fun dispatchLaunchToPython(launch: NativeLaunchData) {
         pythonExecutor.execute {

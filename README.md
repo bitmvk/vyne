@@ -78,7 +78,7 @@ vyne doctor
 vyne test
 vyne build
 vyne install
-vyne run
+vyne run    # dev loop: R = full rebuild, r = hot reload (see docs/cli/live-reload.md)
 ```
 
 The APK is written to:

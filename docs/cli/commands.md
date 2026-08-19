@@ -14,7 +14,7 @@ Vyne apps on Android.
 | `vyne doctor` | check build prerequisites |
 | `vyne build` | assemble the APK via Gradle |
 | `vyne install` | build + adb install |
-| `vyne run` | build + install + launch |
+| `vyne run` | build + install + launch, then keep a dev loop (**R**=rebuild, **r**=hot reload) |
 | `vyne launch` | launch an already-installed app |
 | `vyne test` | run local Python unit tests |
 | `vyne extension new <name>` | scaffold an extension |
